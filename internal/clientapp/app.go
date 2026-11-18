@@ -9,10 +9,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -192,33 +190,12 @@ func (a *App) SetSettings(s Settings) error {
 // Discover asks a intergate dashboard where its SSH endpoint is and which
 // host key it has, and saves the answer.
 func (a *App) Discover(ctx context.Context, dashboard string, hc *http.Client) error {
-	dashboard = strings.TrimSpace(dashboard)
-	if !strings.Contains(dashboard, "://") {
-		dashboard = "https://" + dashboard
-	}
-	u, err := url.Parse(dashboard)
-	if err != nil || u.Host == "" {
-		return fmt.Errorf("%q is not an address like gate.example.com", dashboard)
-	}
-	u.Path, u.RawQuery, u.Fragment = "/client.json", "", ""
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	resp, err := hc.Do(req)
+	info, err := client.Discover(ctx, dashboard, hc)
 	if err != nil {
-		return fmt.Errorf("could not reach %s: %w", u.Host, err)
-	}
-	defer resp.Body.Close()
-	var info struct {
-		Server    string `json:"server"`
-		HostKey   string `json:"host_key"`
-		Domain    string `json:"domain"`
-		Dashboard string `json:"dashboard"`
-	}
-	if resp.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&info) != nil ||
-		info.Server == "" || !strings.HasPrefix(info.HostKey, "SHA256:") {
-		return fmt.Errorf("%s doesn't look like a intergate (no /client.json)", u.Host)
+		return err
 	}
 	s := a.Settings()
-	s.Dashboard, s.Server, s.HostKey, s.Domain = strings.TrimSuffix(info.Dashboard, "/"), info.Server, info.HostKey, info.Domain
+	s.Dashboard, s.Server, s.HostKey, s.Domain = info.Dashboard, info.Server, info.HostKey, info.Domain
 	return a.SetSettings(s)
 }
 

@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -91,5 +92,16 @@ func Dial(server, user string, auth []ssh.AuthMethod, hostKey ssh.HostKeyCallbac
 	if user == "" {
 		user = "intergate"
 	}
-	return ssh.Dial("tcp", server, &ssh.ClientConfig{User: user, Auth: auth, HostKeyCallback: hostKey, Timeout: 15 * time.Second})
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	nc, err := dialContext(ctx, "tcp", server)
+	if err != nil {
+		return nil, err
+	}
+	cc, chans, reqs, err := ssh.NewClientConn(nc, server, &ssh.ClientConfig{User: user, Auth: auth, HostKeyCallback: hostKey, Timeout: 15 * time.Second})
+	if err != nil {
+		nc.Close()
+		return nil, err
+	}
+	return ssh.NewClient(cc, chans, reqs), nil
 }

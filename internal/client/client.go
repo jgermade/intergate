@@ -163,8 +163,7 @@ type route struct {
 
 func runOnce(ctx context.Context, o Options) error {
 	o.emit(Event{Kind: Connecting})
-	d := net.Dialer{Timeout: 15 * time.Second}
-	nc, err := d.DialContext(ctx, "tcp", o.Server)
+	nc, err := dialContext(ctx, "tcp", o.Server)
 	if err != nil {
 		return err
 	}

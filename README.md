@@ -123,6 +123,42 @@ OpenSSH Authentication Agent (`ssh-add`) or `%USERPROFILE%\.ssh`, and
 
 The dashboard shows both commands, ready to copy, for a subdomain's ports.
 
+### Keeping tunnels open: intergate-tunnel
+
+`intergate-tunnel` is the client alone (a few MB, in its own release archive),
+as a service that keeps a machine's tunnels open: subdomains of one gate or
+of several, each with its HTTP tunnel and ports. A tunnel is named by its
+full host; its gate's dashboard is that host without its first label, and
+the client reads the SSH endpoint and host key from its `/client.json`:
+
+```sh
+sudo intergate-tunnel add web1.gate.example1.com --http 8080 --tcp db=5432 --allow 203.0.113.7
+sudo intergate-tunnel add web2.gate.example2.com --http 8090 --udp mc=19132@30100 --allow any
+sudo intergate-tunnel install        # a systemd service, started at boot
+intergate-tunnel status
+```
+
+The machine signs in with a key of its own, created on first use: `add`
+prints it, with where to add it in the dashboard, and waits until it is
+authorized (`intergate-tunnel key` prints it again). Add it once to your
+account's SSH keys to pick it on each subdomain.
+
+A key that opens a subdomain may also manage its ports, within the owner's
+limits: `add` creates the ports the gate lacks, with `--allow` saying who may
+connect (required, so a port is never open by mistake) and `NAME=PORT@PUBLIC`
+asking for a number. `intergate-tunnel ports HOST` lists them,
+`allow HOST PORT ADDRESS…` changes who may connect, and `remove HOST [--tcp
+NAME…] [--delete]` stops forwarding them, and with `--delete` frees them on the
+gate. Ports created this way show who made them in the dashboard.
+
+What the machine forwards is in `/etc/intergate-tunnel/tunnels.yaml` (readable
+by root and the service's own user only, like the key); `--user` uses
+`~/.config/intergate-tunnel` and a systemd user service instead. `add` and
+`remove` reload the running service. `intergate-tunnel run` forwards it all in
+the foreground (SIGHUP reloads), and `intergate-tunnel run HOST --http 3000`
+forwards one subdomain now with your ssh-agent keys, without saving anything,
+as `intergate tunnel` does.
+
 ### The desktop app
 
 The Windows release zips also hold `intergate-gui.exe`, the client with a
