@@ -177,7 +177,8 @@ type TCPConfig struct {
 	// Ports is the public range ports are allocated from, e.g.
 	// "30000-30099". Without it, subdomains get no TCP ports.
 	Ports string `yaml:"ports"`
-	// MaxPorts is how many ports a subdomain can have.
+	// MaxPorts is how many ports a user can have across their subdomains,
+	// unless an administrator gives them another number.
 	MaxPorts int `yaml:"max_ports"`
 	// ListenHost is the address the ports listen on; all interfaces by
 	// default.
@@ -198,18 +199,64 @@ func (t TCPConfig) Range() (first, last int) { return t.first, t.last }
 // InRange reports whether port belongs to the public range.
 func (t TCPConfig) InRange(port int) bool { return t.first != 0 && port >= t.first && port <= t.last }
 
-func (t *TCPConfig) parse() error {
-	if t.Ports == "" {
-		return nil
+// PortRange is a span of public ports, both ends included.
+type PortRange struct{ First, Last int }
+
+// Contains reports whether port is in r.
+func (r PortRange) Contains(port int) bool { return port >= r.First && port <= r.Last }
+
+func (r PortRange) String() string {
+	if r.First == r.Last {
+		return strconv.Itoa(r.First)
 	}
-	lo, hi, found := strings.Cut(strings.TrimSpace(t.Ports), "-")
+	return strconv.Itoa(r.First) + "-" + strconv.Itoa(r.Last)
+}
+
+// ParsePortRange reads a range like 30000-30099, or a single port.
+func ParsePortRange(s string) (PortRange, error) {
+	lo, hi, found := strings.Cut(strings.TrimSpace(s), "-")
 	if !found {
 		hi = lo
 	}
 	first, err1 := strconv.Atoi(strings.TrimSpace(lo))
 	last, err2 := strconv.Atoi(strings.TrimSpace(hi))
+	if err1 != nil || err2 != nil || first < 1 || last > 65535 || first > last {
+		return PortRange{}, fmt.Errorf("%q is not a port or a range of ports like 30000-30099", strings.TrimSpace(s))
+	}
+	return PortRange{first, last}, nil
+}
+
+// ParsePortRanges reads a list of ranges separated by commas or spaces,
+// like "30100-30109,30200-30299". Empty means none.
+func ParsePortRanges(s string) ([]PortRange, error) {
+	var out []PortRange
+	for _, f := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' || r == '\n' }) {
+		r, err := ParsePortRange(f)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// FormatPortRanges is the canonical text of ranges: "30100-30109,30200".
+func FormatPortRanges(ranges []PortRange) string {
+	parts := make([]string, len(ranges))
+	for i, r := range ranges {
+		parts[i] = r.String()
+	}
+	return strings.Join(parts, ",")
+}
+
+func (t *TCPConfig) parse() error {
+	if t.Ports == "" {
+		return nil
+	}
+	r, err := ParsePortRange(t.Ports)
+	first, last := r.First, r.Last
 	switch {
-	case err1 != nil || err2 != nil || first < 1 || last > 65535 || first > last:
+	case err != nil:
 		return fmt.Errorf("tcp.ports must be a range of ports like 30000-30099, not %q", t.Ports)
 	case first <= 443 && last >= 80:
 		return errors.New("tcp.ports must not include ports 80 to 443, which tunnels use for HTTP")

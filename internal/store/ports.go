@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 )
@@ -15,9 +16,9 @@ const (
 )
 
 // Port is a public port of a subdomain, forwarded over SSH to a service
-// on the client's side. Ports are created from the dashboard, never on
-// connect, so their number stays the same and who may reach them is set
-// before anyone can.
+// on the client's side. A port is kept, with its number, until it is
+// deleted, and who may reach it is set when it is created, before anyone
+// can.
 type Port struct {
 	ID          int64
 	SubdomainID int64
@@ -52,29 +53,26 @@ func scanPort(row scanner) (*Port, error) {
 	return &p, nil
 }
 
-// CreatePort adds p to its subdomain with the lowest free public port
-// between first and last, which it sets. It returns ErrConflict if the
-// subdomain already has a port with that name, and ErrFull if the range
-// has no port left.
-func (s *Store) CreatePort(ctx context.Context, p *Port, first, last int) error {
+// Span is a range of public port numbers, both ends included.
+type Span struct{ First, Last int }
+
+// CreatePort adds p to its subdomain. With p.Port set it takes that
+// number, or returns ErrTaken; otherwise the lowest free one in spans,
+// which it sets, or ErrFull. It returns ErrConflict if the subdomain
+// already has a port with that name.
+func (s *Store) CreatePort(ctx context.Context, p *Port, spans []Span) error {
 	p.CreatedAt = s.now().Truncate(time.Second)
 	if p.Protocol == "" {
 		p.Protocol = ProtocolTCP
 	}
-	// Another port may take the number found between the query and the
-	// insert: try the next one.
-	for range 10 {
-		port, err := s.freePort(ctx, first, last)
-		if err != nil {
-			return err
-		}
-		err = s.db.QueryRowContext(ctx, `
+	insert := func(port int) error {
+		err := s.db.QueryRowContext(ctx, `
 			INSERT INTO tcp_ports (subdomain_id, name, protocol, port, allow, preset, local_port, created_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 			p.SubdomainID, p.Name, p.Protocol, port, strings.Join(p.Allow, " "), p.Preset, p.LocalPort, unix(p.CreatedAt)).Scan(&p.ID)
 		switch {
 		case isUniqueViolation(err) && strings.Contains(err.Error(), "tcp_ports.port"):
-			continue
+			return ErrTaken
 		case isUniqueViolation(err):
 			return ErrConflict
 		case err != nil:
@@ -83,10 +81,35 @@ func (s *Store) CreatePort(ctx context.Context, p *Port, first, last int) error 
 		p.Port = port
 		return nil
 	}
+	if p.Port != 0 {
+		return insert(p.Port)
+	}
+	// Another port may take the number found between the query and the
+	// insert: try the next one.
+	for range 10 {
+		port, err := s.freePort(ctx, spans)
+		if err != nil {
+			return err
+		}
+		if err := insert(port); !errors.Is(err, ErrTaken) {
+			return err
+		}
+	}
 	return ErrFull
 }
 
-func (s *Store) freePort(ctx context.Context, first, last int) (int, error) {
+// freePort is the lowest number of spans no port has.
+func (s *Store) freePort(ctx context.Context, spans []Span) (int, error) {
+	for _, sp := range spans {
+		port, err := s.freeIn(ctx, sp.First, sp.Last)
+		if !errors.Is(err, ErrFull) {
+			return port, err
+		}
+	}
+	return 0, ErrFull
+}
+
+func (s *Store) freeIn(ctx context.Context, first, last int) (int, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT port FROM tcp_ports WHERE port BETWEEN ? AND ? ORDER BY port`, first, last)
 	if err != nil {
 		return 0, err
@@ -128,6 +151,13 @@ func (s *Store) PortsBySubdomain(ctx context.Context, subdomainID int64) ([]*Por
 		out = append(out, p)
 	}
 	return out, rows.Err()
+}
+
+// CountPortsByUser counts the ports of every subdomain a user owns.
+func (s *Store) CountPortsByUser(ctx context.Context, userID int64) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM tcp_ports p JOIN subdomains d ON d.id = p.subdomain_id WHERE d.user_id = ?`, userID).Scan(&n)
+	return n, err
 }
 
 // PortByNumber returns the port with this public number.

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jgermade/intergate/internal/config"
+	"github.com/jgermade/intergate/internal/manage"
 	"github.com/jgermade/intergate/internal/ports"
 	"github.com/jgermade/intergate/internal/store"
 	"github.com/jgermade/intergate/internal/tunnel"
@@ -141,18 +142,42 @@ type User struct {
 	ConfigOwner bool      `json:"config_owner"`
 	Allowed     bool      `json:"allowed"`
 	Subdomains  int       `json:"subdomains"`
+	Ports       int       `json:"ports"`
 	Passkeys    int       `json:"passkeys"`
 	Providers   string    `json:"providers"`
 	LastLoginAt time.Time `json:"last_login_at"`
+	Limits      Limits    `json:"limits"`
 }
 
-// NewUser describes u as an administrator sees it.
-func NewUser(cfg *config.Config, u store.UserSummary) User {
+// Limits are what a user may have, and which of them an administrator
+// set for them rather than the configuration.
+type Limits struct {
+	Subdomains int `json:"subdomains"`
+	Ports      int `json:"ports"`
+	// Ranges are where their ports' numbers come from, like
+	// "30100-30109,30200-30299".
+	Ranges           string `json:"ranges"`
+	CustomSubdomains bool   `json:"custom_subdomains"`
+	CustomPorts      bool   `json:"custom_ports"`
+	CustomRanges     bool   `json:"custom_ranges"`
+}
+
+// NewLimits describes l.
+func NewLimits(l manage.Limits) Limits {
+	return Limits{
+		Subdomains: l.Subdomains, Ports: l.Ports, Ranges: config.FormatPortRanges(l.Ranges),
+		CustomSubdomains: l.CustomSubdomains, CustomPorts: l.CustomPorts, CustomRanges: l.CustomRanges,
+	}
+}
+
+// NewUser describes u, whose limits are l, as an administrator sees it.
+func NewUser(cfg *config.Config, u store.UserSummary, l manage.Limits) User {
 	role := cfg.UserRole(u.Email, string(u.Role))
 	return User{
 		ID: u.ID, Email: u.Email, Name: u.Name, Disabled: u.Disabled,
 		Admin: role != "user", Role: role, ConfigOwner: cfg.IsAdmin(u.Email), Allowed: cfg.UserAllowed(u.Email, u.Added, string(u.Role)),
-		Subdomains: u.Subdomains, Passkeys: u.Passkeys, Providers: u.Providers, LastLoginAt: u.LastLoginAt,
+		Subdomains: u.Subdomains, Ports: u.Ports, Passkeys: u.Passkeys, Providers: u.Providers, LastLoginAt: u.LastLoginAt,
+		Limits: NewLimits(l),
 	}
 }
 

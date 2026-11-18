@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jgermade/intergate/internal/config"
 	"github.com/jgermade/intergate/internal/store"
 )
 
@@ -59,12 +60,20 @@ type bootLink struct {
 	URL  string `json:"url"`
 }
 
+// bootLimits are the signed-in user's limits, or the configuration's.
 type bootLimits struct {
 	Subdomains int `json:"subdomains"`
 	Keys       int `json:"keys"`
+	// Ports, across the user's subdomains, and the ranges their numbers
+	// come from.
+	Ports      int    `json:"ports"`
+	PortRanges string `json:"port_ranges"`
+	// DefaultSubdomains is limits.subdomains_per_user, for the Admin page.
+	DefaultSubdomains int `json:"default_subdomains"`
 }
 
-// bootTCP describes TCP ports, when the server has them.
+// bootTCP describes TCP ports, when the server has them. MaxPorts is how
+// many a user may have unless an administrator says otherwise.
 type bootTCP struct {
 	First    int    `json:"first"`
 	Last     int    `json:"last"`
@@ -110,8 +119,9 @@ func (s *Server) serveApp(w http.ResponseWriter, r *http.Request, status int, pe
 		Email:     s.settings.EmailEnabled(),
 		Passkeys:  s.webauthn != nil,
 		Providers: []bootLink{},
-		Limits:    bootLimits{Subdomains: s.cfg.Limits.SubdomainsPerUser, Keys: s.cfg.Limits.KeysPerSubdomain},
-		Error:     perr,
+		Limits: bootLimits{Subdomains: s.cfg.Limits.SubdomainsPerUser, Keys: s.cfg.Limits.KeysPerSubdomain, Ports: s.cfg.TCP.MaxPorts,
+			DefaultSubdomains: s.cfg.Limits.SubdomainsPerUser},
+		Error: perr,
 	}
 	if s.cfg.TCP.Enabled() {
 		first, last := s.cfg.TCP.Range()
@@ -129,6 +139,8 @@ func (s *Server) serveApp(w http.ResponseWriter, r *http.Request, status int, pe
 	}
 	if a := currentAuth(r); a != nil {
 		u := a.User
+		l := s.manage.Limits(u)
+		b.Limits.Subdomains, b.Limits.Ports, b.Limits.PortRanges = l.Subdomains, l.Ports, config.FormatPortRanges(l.Ranges)
 		b.User = &me{ID: u.ID, Email: u.Email, Name: u.Name, AvatarURL: u.AvatarURL, Admin: a.Admin, Role: string(a.Role), CreatedAt: u.CreatedAt}
 		b.CSRF = a.Session.CSRFToken
 	} else if f, ok := s.emailFlow(r); ok {

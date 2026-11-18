@@ -25,6 +25,7 @@ type User struct {
 	// dashboard; auth.admins makes owners whatever it says.
 	Added       bool
 	Role        Role
+	Limits      UserLimits
 	CreatedAt   time.Time
 	LastLoginAt time.Time
 }
@@ -60,16 +61,36 @@ type Identity struct {
 	AvatarURL string
 }
 
-const userColumns = `id, email, name, avatar_url, webauthn_id, disabled, added, role, created_at, last_login_at`
+// UserLimits are what an administrator set for a user. A nil count means
+// the configuration's; empty PortRanges, all of tcp.ports.
+type UserLimits struct {
+	Subdomains *int
+	Ports      *int
+	// PortRanges is the canonical text of the ranges, like
+	// "30100-30109,30200-30299".
+	PortRanges string
+}
+
+const userColumns = `id, email, name, avatar_url, webauthn_id, disabled, added, role, max_subdomains, max_ports, port_ranges, created_at, last_login_at`
+
+func intPtr(v sql.NullInt64) *int {
+	if !v.Valid {
+		return nil
+	}
+	n := int(v.Int64)
+	return &n
+}
 
 type scanner interface{ Scan(dest ...any) error }
 
 func scanUser(row scanner) (*User, error) {
 	var u User
 	var created, lastLogin int64
-	if err := row.Scan(&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.WebAuthnID, &u.Disabled, &u.Added, &u.Role, &created, &lastLogin); err != nil {
+	var maxSub, maxPorts sql.NullInt64
+	if err := row.Scan(&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.WebAuthnID, &u.Disabled, &u.Added, &u.Role, &maxSub, &maxPorts, &u.Limits.PortRanges, &created, &lastLogin); err != nil {
 		return nil, notFound(err)
 	}
+	u.Limits.Subdomains, u.Limits.Ports = intPtr(maxSub), intPtr(maxPorts)
 	u.CreatedAt, u.LastLoginAt = fromUnix(created), fromUnix(lastLogin)
 	return &u, nil
 }
@@ -181,6 +202,7 @@ func (s *Store) LoginOAuth(ctx context.Context, id Identity) (*User, error) {
 type UserSummary struct {
 	User
 	Subdomains int
+	Ports      int
 	Passkeys   int
 	Providers  string
 }
@@ -190,6 +212,7 @@ func (s *Store) ListUsers(ctx context.Context) ([]UserSummary, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT `+userColumns+`,
 			(SELECT COUNT(*) FROM subdomains d WHERE d.user_id = users.id),
+			(SELECT COUNT(*) FROM tcp_ports t JOIN subdomains d ON d.id = t.subdomain_id WHERE d.user_id = users.id),
 			(SELECT COUNT(*) FROM passkeys p WHERE p.user_id = users.id),
 			COALESCE((SELECT GROUP_CONCAT(provider, ', ') FROM identities i WHERE i.user_id = users.id), '')
 		FROM users ORDER BY last_login_at DESC, id`)
@@ -201,10 +224,12 @@ func (s *Store) ListUsers(ctx context.Context) ([]UserSummary, error) {
 	for rows.Next() {
 		var us UserSummary
 		var created, lastLogin int64
-		if err := rows.Scan(&us.ID, &us.Email, &us.Name, &us.AvatarURL, &us.WebAuthnID, &us.Disabled, &us.Added, &us.Role, &created, &lastLogin,
-			&us.Subdomains, &us.Passkeys, &us.Providers); err != nil {
+		var maxSub, maxPorts sql.NullInt64
+		if err := rows.Scan(&us.ID, &us.Email, &us.Name, &us.AvatarURL, &us.WebAuthnID, &us.Disabled, &us.Added, &us.Role, &maxSub, &maxPorts, &us.Limits.PortRanges, &created, &lastLogin,
+			&us.Subdomains, &us.Ports, &us.Passkeys, &us.Providers); err != nil {
 			return nil, err
 		}
+		us.Limits.Subdomains, us.Limits.Ports = intPtr(maxSub), intPtr(maxPorts)
 		us.CreatedAt, us.LastLoginAt = fromUnix(created), fromUnix(lastLogin)
 		out = append(out, us)
 	}
@@ -270,6 +295,26 @@ func (s *Store) SetUserAdded(ctx context.Context, id int64) error {
 // owners whatever it is.
 func (s *Store) SetUserRole(ctx context.Context, id int64, role Role) error {
 	return s.setUser(ctx, id, "role", role)
+}
+
+// SetUserLimits saves the limits an administrator set for a user.
+func (s *Store) SetUserLimits(ctx context.Context, id int64, l UserLimits) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE users SET max_subdomains = ?, max_ports = ?, port_ranges = ? WHERE id = ?`,
+		nullInt(l.Subdomains), nullInt(l.Ports), l.PortRanges, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func nullInt(p *int) sql.NullInt64 {
+	if p == nil {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: int64(*p), Valid: true}
 }
 
 func (s *Store) setUser(ctx context.Context, id int64, column string, v any) error {
@@ -411,17 +456,21 @@ func (s *Store) CreateSession(ctx context.Context, userID int64, ttl time.Durati
 
 const sessionUserQuery = `
 	SELECT s.id, s.user_id, s.csrf_token, s.created_at, s.expires_at,
-		u.id, u.email, u.name, u.avatar_url, u.webauthn_id, u.disabled, u.added, u.role, u.created_at, u.last_login_at
+		u.id, u.email, u.name, u.avatar_url, u.webauthn_id, u.disabled, u.added, u.role,
+		u.max_subdomains, u.max_ports, u.port_ranges, u.created_at, u.last_login_at
 	FROM sessions s JOIN users u ON u.id = s.user_id `
 
 func (s *Store) scanSessionUser(row scanner) (*Session, *User, error) {
 	var sess Session
 	var u User
 	var sCreated, sExpires, uCreated, uLogin int64
+	var maxSub, maxPorts sql.NullInt64
 	if err := row.Scan(&sess.ID, &sess.UserID, &sess.CSRFToken, &sCreated, &sExpires,
-		&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.WebAuthnID, &u.Disabled, &u.Added, &u.Role, &uCreated, &uLogin); err != nil {
+		&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.WebAuthnID, &u.Disabled, &u.Added, &u.Role,
+		&maxSub, &maxPorts, &u.Limits.PortRanges, &uCreated, &uLogin); err != nil {
 		return nil, nil, notFound(err)
 	}
+	u.Limits.Subdomains, u.Limits.Ports = intPtr(maxSub), intPtr(maxPorts)
 	sess.CreatedAt, sess.ExpiresAt = fromUnix(sCreated), fromUnix(sExpires)
 	u.CreatedAt, u.LastLoginAt = fromUnix(uCreated), fromUnix(uLogin)
 	if !s.now().Before(sess.ExpiresAt) || u.Disabled {

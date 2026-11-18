@@ -382,7 +382,7 @@ func (s *Server) Run(ctx context.Context) error {
 		log.Info("client addresses from trusted proxies", "trusted_proxies", strings.Join(cfg.TrustedProxyRanges(), ","))
 	}
 	if cfg.TCP.Enabled() {
-		log.Info("tcp ports enabled", "range", cfg.TCP.Ports, "per_subdomain", cfg.TCP.MaxPorts, "address", cfg.TCPAddress(0))
+		log.Info("tcp ports enabled", "range", cfg.TCP.Ports, "per_user", cfg.TCP.MaxPorts, "address", cfg.TCPAddress(0))
 	}
 	if cfg.Auth.Email.LogOnly {
 		log.Warn("auth.email.log_only is set: sign-in codes are written to this log instead of being emailed")

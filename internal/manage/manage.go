@@ -85,8 +85,8 @@ func (s *Service) CreateSubdomain(ctx context.Context, owner *store.User, name s
 		if err != nil {
 			return nil, KeysResult{}, err
 		}
-		if len(owned) >= s.cfg.Limits.SubdomainsPerUser {
-			return nil, KeysResult{}, Errorf("you can register at most %d subdomains", s.cfg.Limits.SubdomainsPerUser)
+		if max := s.Limits(owner).Subdomains; len(owned) >= max {
+			return nil, KeysResult{}, Errorf("you can register at most %d subdomains", max)
 		}
 	}
 	// Parse keys first, so a typo doesn't leave a half-configured

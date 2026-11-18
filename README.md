@@ -72,8 +72,9 @@ A new connection for a subdomain replaces the previous one, so reconnecting
 
 With `tcp.ports` in the configuration, a subdomain can also have raw TCP
 ports (a database, SSH, RDP, a Minecraft server…), added from its page in
-the dashboard. Each one gets a public port from the range, kept for as long
-as it exists, and an allow list: only those addresses (by default, yours)
+the dashboard. Each one gets a public port from the range (or the number
+you choose, in your ranges), kept for as long as it exists, and an allow
+list: only those addresses (by default, yours)
 can connect, unless you open it to anyone. Ports are never created on
 connect, so they are protected before they are reachable.
 
@@ -538,6 +539,11 @@ Highlights:
   subdomain and account but owners', owners manage everything, and
   `auth.admins` are always owners. With none of them, the dashboard's setup
   asks for the owner.
+- `limits.subdomains_per_user` and `tcp.max_ports` are defaults: on the
+  Admin page (the sliders button of a user) administrators can give a user
+  other numbers, and the ranges of `tcp.ports` their ports' numbers come
+  from, like `30100-30109,30200-30299`. Lowering a limit keeps what a user
+  has; they just can't add more.
 - `ssh.proxy_protocol`, `http.tls.proxy_protocol`: expect a PROXY protocol
   header from a load balancer, or from a proxy that passes TLS through.
 - `trusted_proxies`: the addresses (IPs or CIDR ranges) your proxies and load
@@ -550,7 +556,7 @@ Highlights:
   certificate](#wildcard-certificate-and-dns-providers), with
   `http.tls.acme`. Without it, owners can set one up from the dashboard.
 - `tcp.ports`: the range TCP and UDP ports are allocated from (e.g. `30000-30019`);
-  `tcp.max_ports` per subdomain (5), `tcp.public_host` for their addresses
+  `tcp.max_ports` per user across their subdomains (5), `tcp.public_host` for their addresses
   (the SSH host by default) and `tcp.listen_host` to listen on one interface.
 
 For local development, `*.localhost` resolves to 127.0.0.1 in browsers:

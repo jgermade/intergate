@@ -94,6 +94,8 @@ auth:
 #   # Unix socket used by `intergate config` and `intergate status`.
 #   socket: /var/lib/intergate/admin.sock
 
+# Defaults: administrators can give each user other numbers, and ranges of
+# tcp.ports, from the dashboard (Admin → Users → limits).
 limits:
   subdomains_per_user: 10
   keys_per_subdomain: 20
@@ -105,7 +107,7 @@ limits:
 # number from this range for good; open it in your firewall, TCP and UDP.
 # tcp:
 #   ports: 30000-30019
-#   max_ports: 5                    # per subdomain
+#   max_ports: 5                    # per user, across their subdomains
 #   public_host: gate.example.com   # defaults to the SSH host
 
 # A DNS provider for the zone of the domain: intergate then gets one
