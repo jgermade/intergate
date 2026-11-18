@@ -761,6 +761,9 @@ hero, regenerate the landing, then run `node scripts/landing/og.js`.
 
 ## Roadmap
 
+- The desktop app creating and changing a subdomain's ports, as
+  intergate-tunnel does.
+- User limits from `intergate config` too.
 - Sharing private subdomains with specific users.
 - Custom domains (CNAME to a subdomain).
 - Request inspector in the dashboard.
