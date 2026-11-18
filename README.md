@@ -125,7 +125,7 @@ The dashboard shows both commands, ready to copy, for a subdomain's ports.
 
 ### Keeping tunnels open: intergate-tunnel
 
-`intergate-tunnel` is the client alone (a few MB, in its own release archive),
+`intergate-tunnel` is the client alone (about 4 MB to download, in its own release archive),
 as a service that keeps a machine's tunnels open: subdomains of one gate or
 of several, each with its HTTP tunnel and ports. A tunnel is named by its
 full host; its gate's dashboard is that host without its first label, and
