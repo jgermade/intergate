@@ -59,7 +59,9 @@ func (c *clientConn) handleGlobalRequests(reqs <-chan *ssh.Request) {
 		case udpframe.ForwardRequest:
 			c.handleUDPForward(req)
 		default:
-			req.Reply(false, nil)
+			if !c.handleWire(req) {
+				req.Reply(false, nil)
+			}
 		}
 	}
 }

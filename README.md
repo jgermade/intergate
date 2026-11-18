@@ -72,8 +72,9 @@ A new connection for a subdomain replaces the previous one, so reconnecting
 
 With `tcp.ports` in the configuration, a subdomain can also have raw TCP
 ports (a database, SSH, RDP, a Minecraft server…), added from its page in
-the dashboard. Each one gets a public port from the range, kept for as long
-as it exists, and an allow list: only those addresses (by default, yours)
+the dashboard. Each one gets a public port from the range (or the number
+you choose, in your ranges), kept for as long as it exists, and an allow
+list: only those addresses (by default, yours)
 can connect, unless you open it to anyone. Ports are never created on
 connect, so they are protected before they are reachable.
 
@@ -122,12 +123,57 @@ OpenSSH Authentication Agent (`ssh-add`) or `%USERPROFILE%\.ssh`, and
 
 The dashboard shows both commands, ready to copy, for a subdomain's ports.
 
+### Keeping tunnels open: intergate-tunnel
+
+`intergate-tunnel` is the client alone (about 4 MB to download, in its own release archive),
+as a service that keeps a machine's tunnels open: subdomains of one gate or
+of several, each with its HTTP tunnel and ports. A tunnel is named by its
+full host; its gate's dashboard is that host without its first label, and
+the client reads the SSH endpoint and host key from its `/client.json`:
+
+```sh
+sudo intergate-tunnel add web1.gate.example1.com --http 8080 --tcp db=5432 --allow 203.0.113.7
+sudo intergate-tunnel add web2.gate.example2.com --http 8090 --udp mc=19132@30100 --allow any
+sudo intergate-tunnel install        # a service started at boot: systemd, or launchd on macOS
+intergate-tunnel status
+```
+
+The machine signs in with a key of its own, created on first use: `add`
+prints it, with where to add it in the dashboard, and waits until it is
+authorized (`intergate-tunnel key` prints it again). Add it once to your
+account's SSH keys to pick it on each subdomain.
+
+A key that opens a subdomain may also manage its ports, within the owner's
+limits: `add` creates the ports the gate lacks, with `--allow` saying who may
+connect (required, so a port is never open by mistake) and `NAME=PORT@PUBLIC`
+asking for a number. `intergate-tunnel ports HOST` lists them,
+`allow HOST PORT ADDRESS…` changes who may connect, and `remove HOST [--tcp
+NAME…] [--delete]` stops forwarding them, and with `--delete` frees them on the
+gate. Ports created this way show who made them in the dashboard.
+
+The dashboard's `tunnel.sh` does it all in one line with `--install`:
+`curl -fsSL https://gate.example.com/tunnel.sh | sh -s -- web1 --http 8080
+--install` (add `--user` for a service of your own, without sudo).
+
+What the machine forwards is in `/etc/intergate-tunnel/tunnels.yaml` (readable
+by root and the service's own user only, like the key); `--user` uses
+`~/.config/intergate-tunnel` and a systemd user service instead. On macOS the
+service is a launchd job: a LaunchDaemon run as root, or with `--user` your
+LaunchAgent (`~/Library/Application Support/intergate-tunnel`), logging to
+`/var/log/intergate-tunnel.log` or `~/Library/Logs/intergate-tunnel.log`. `add` and
+`remove` reload the running service. `intergate-tunnel run` forwards it all in
+the foreground (SIGHUP reloads), and `intergate-tunnel run HOST --http 3000`
+forwards one subdomain now with your ssh-agent keys, without saving anything,
+as `intergate tunnel` does.
+
 ### The desktop app
 
 The Windows release zips also hold `intergate-gui.exe`, the client with a
 window and a tray icon. Give it your dashboard's address and it looks up the
 SSH endpoint and host key (`/client.json`); then the subdomain, an optional
-key file, and what to forward (the HTTP tunnel and ports, by name). It shows
+key file, and what to forward (the HTTP tunnel and ports, by name; it lists
+the subdomain's ports on the gate, and creates, changes and deletes them with
+its key). It shows
 each forward's state and public address and a log, connects and disconnects
 from the tray, can start with Windows (minimized to the tray, from the
 user's `Run` key) and connect on start. Its settings live in
@@ -171,6 +217,14 @@ curl -fsSL https://jgermade.github.io/intergate/setup.sh | sh -s -- setup-url
 curl -fsSL https://jgermade.github.io/intergate/setup.sh | sh -s -- uninstall --purge
 ```
 
+On a machine that only opens tunnels to a gate, `client` installs
+[intergate-tunnel](#keeping-tunnels-open-intergate-tunnel) instead and opens
+its wizard (`uninstall-client` removes it):
+
+```sh
+curl -fsSL https://jgermade.github.io/intergate/setup.sh | sh -s -- client
+```
+
 Every release archive, the Docker image and the Helm chart also carry a
 build provenance attestation signed by GitHub: it proves they were built by
 this repository's release workflow, from the tagged commit. With the
@@ -187,7 +241,7 @@ gh attestation verify oci://ghcr.io/jgermade/intergate:latest --repo jgermade/in
 | `--version TAG` | A release such as `v0.2.0`. Default the latest, or `INTERGATE_VERSION`. |
 | `--config FILE` | Default `/etc/intergate/intergate.yaml`. |
 | `--no-service` | Neither install nor restart the systemd service. |
-| `--purge` | With `uninstall`: also delete the configuration, data and service user. |
+| `--purge` | With `uninstall`: also delete the configuration, data and service user. With `uninstall-client`: intergate-tunnel's tunnels, key and user. |
 | `-y`, `--yes` | Do not ask; `--purge` needs it when there is no terminal. |
 | `INTERGATE_DOWNLOAD_URL` | A directory with `intergate-<os>-<arch>.tar.gz` and `SHA256SUMS`, used instead of GitHub. |
 
@@ -538,6 +592,11 @@ Highlights:
   subdomain and account but owners', owners manage everything, and
   `auth.admins` are always owners. With none of them, the dashboard's setup
   asks for the owner.
+- `limits.subdomains_per_user` and `tcp.max_ports` are defaults: on the
+  Admin page (the sliders button of a user) administrators can give a user
+  other numbers, and the ranges of `tcp.ports` their ports' numbers come
+  from, like `30100-30109,30200-30299`. Lowering a limit keeps what a user
+  has; they just can't add more.
 - `ssh.proxy_protocol`, `http.tls.proxy_protocol`: expect a PROXY protocol
   header from a load balancer, or from a proxy that passes TLS through.
 - `trusted_proxies`: the addresses (IPs or CIDR ranges) your proxies and load
@@ -550,7 +609,7 @@ Highlights:
   certificate](#wildcard-certificate-and-dns-providers), with
   `http.tls.acme`. Without it, owners can set one up from the dashboard.
 - `tcp.ports`: the range TCP and UDP ports are allocated from (e.g. `30000-30019`);
-  `tcp.max_ports` per subdomain (5), `tcp.public_host` for their addresses
+  `tcp.max_ports` per user across their subdomains (5), `tcp.public_host` for their addresses
   (the SSH host by default) and `tcp.listen_host` to listen on one interface.
 
 For local development, `*.localhost` resolves to 127.0.0.1 in browsers:
@@ -704,6 +763,7 @@ hero, regenerate the landing, then run `node scripts/landing/og.js`.
 
 ## Roadmap
 
+- User limits from `intergate config` too.
 - Sharing private subdomains with specific users.
 - Custom domains (CNAME to a subdomain).
 - Request inspector in the dashboard.

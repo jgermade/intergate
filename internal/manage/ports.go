@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/jgermade/intergate/internal/config"
 	"github.com/jgermade/intergate/internal/ports"
 	"github.com/jgermade/intergate/internal/store"
 )
@@ -19,12 +20,15 @@ var presetName = regexp.MustCompile(`^[a-z0-9-]{0,32}$`)
 const maxAllow = 32
 
 // PortInput describes a port to add or the new settings of one. On an
-// update, Protocol and Preset are ignored.
+// update, Protocol, Preset and Port are ignored.
 type PortInput struct {
 	Name      string
 	Protocol  store.Protocol
 	Preset    string
 	LocalPort int
+	// Port is the public number asked for; 0 takes the lowest free one
+	// of the owner's ranges.
+	Port int
 	// Allow lists addresses and CIDRs; empty lets anyone in.
 	Allow []string
 }
@@ -87,21 +91,33 @@ func (s *Service) CreatePort(ctx context.Context, d *store.Subdomain, in PortInp
 	if err := in.check(); err != nil {
 		return nil, err
 	}
-	existing, err := s.store.PortsBySubdomain(ctx, d.ID)
+	owner, err := s.store.UserByID(ctx, d.UserID)
 	if err != nil {
 		return nil, err
 	}
-	if len(existing) >= s.cfg.TCP.MaxPorts {
-		return nil, Errorf("a subdomain can have at most %d ports", s.cfg.TCP.MaxPorts)
+	limits := s.Limits(owner)
+	used, err := s.store.CountPortsByUser(ctx, owner.ID)
+	if err != nil {
+		return nil, err
+	}
+	if used >= limits.Ports {
+		return nil, Errorf("%s already has %d of the %d ports they may have", owner.Email, used, limits.Ports)
+	}
+	if in.Port != 0 && !inRanges(limits.Ranges, in.Port) {
+		return nil, Errorf("port %d is not one %s may have: theirs are %s", in.Port, owner.Email, config.FormatPortRanges(limits.Ranges))
 	}
 	p := &store.Port{
 		SubdomainID: d.ID, Subdomain: d.Name, OwnerID: d.UserID,
-		Name: in.Name, Protocol: in.Protocol, Allow: in.Allow, Preset: in.Preset, LocalPort: in.LocalPort,
+		Name: in.Name, Protocol: in.Protocol, Allow: in.Allow, Preset: in.Preset, LocalPort: in.LocalPort, Port: in.Port,
+		CreatedBy: actor,
 	}
-	first, last := s.cfg.TCP.Range()
-	switch err := s.store.CreatePort(ctx, p, first, last); {
+	switch err := s.store.CreatePort(ctx, p, spans(limits.Ranges)); {
 	case errors.Is(err, store.ErrConflict):
 		return nil, Errorf("%s already has a port named %q", d.Name, in.Name)
+	case errors.Is(err, store.ErrTaken):
+		return nil, Errorf("port %d is taken", in.Port)
+	case errors.Is(err, store.ErrFull) && limits.CustomRanges:
+		return nil, Errorf("every port of %s is taken; ask an administrator for more", config.FormatPortRanges(limits.Ranges))
 	case errors.Is(err, store.ErrFull):
 		return nil, Errorf("every port of this server is taken; ask an administrator to widen tcp.ports")
 	case err != nil:

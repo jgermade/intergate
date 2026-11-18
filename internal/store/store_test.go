@@ -236,7 +236,7 @@ func TestPorts(t *testing.T) {
 
 	add := func(d *Subdomain, name string) (*Port, error) {
 		p := &Port{SubdomainID: d.ID, Name: name, Allow: []string{"10.0.0.0/8", "192.0.2.1/32"}, Preset: "postgresql", LocalPort: 5432}
-		return p, s.CreatePort(ctx, p, 30000, 30002)
+		return p, s.CreatePort(ctx, p, []Span{{30000, 30002}})
 	}
 	p1, err := add(app, "pg")
 	if err != nil || p1.Port != 30000 || p1.Protocol != ProtocolTCP {

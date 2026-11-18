@@ -420,7 +420,7 @@ func (h *Handler) listUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]User, len(users))
 	for i, u := range users {
-		out[i] = api.NewUser(h.cfg, u)
+		out[i] = api.NewUser(h.cfg, u, h.manage.Limits(&u.User))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -438,7 +438,7 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, api.NewUser(h.cfg, store.UserSummary{User: *u}))
+	writeJSON(w, http.StatusCreated, api.NewUser(h.cfg, store.UserSummary{User: *u}, h.manage.Limits(u)))
 }
 
 func (h *Handler) setDisabled(disabled bool) http.HandlerFunc {

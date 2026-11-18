@@ -14,26 +14,30 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// fakeRelease writes a release directory whose intergate only prints its
-// arguments, and returns it.
+// fakeRelease writes a release directory whose intergate and
+// intergate-tunnel only print their arguments, and returns it.
 func fakeRelease(t *testing.T, corrupt bool) string {
 	t.Helper()
 	dir := t.TempDir()
 	target := runtime.GOOS + "-" + runtime.GOARCH
-	bin := filepath.Join(dir, "intergate-"+target)
-	os.MkdirAll(bin, 0o755)
-	os.WriteFile(filepath.Join(bin, "intergate"), []byte("#!/bin/sh\necho \"client $*\"\n"), 0o755)
-	asset := "intergate-" + target + ".tar.gz"
-	if out, err := exec.Command("tar", "-czf", filepath.Join(dir, asset), "-C", dir, "intergate-"+target).CombinedOutput(); err != nil {
-		t.Fatalf("tar: %v %s", err, out)
+	var sums []byte
+	for name, says := range map[string]string{"intergate": "client", "intergate-tunnel": "tunnel"} {
+		bin := filepath.Join(dir, name+"-"+target)
+		os.MkdirAll(bin, 0o755)
+		os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\necho \""+says+" $*\"\n"), 0o755)
+		asset := name + "-" + target + ".tar.gz"
+		if out, err := exec.Command("tar", "-czf", filepath.Join(dir, asset), "-C", dir, name+"-"+target).CombinedOutput(); err != nil {
+			t.Fatalf("tar: %v %s", err, out)
+		}
+		os.RemoveAll(bin)
+		data, _ := os.ReadFile(filepath.Join(dir, asset))
+		sum := sha256.Sum256(data)
+		if corrupt {
+			sum[0]++
+		}
+		sums = fmt.Appendf(sums, "%x  %s\n", sum, asset)
 	}
-	os.RemoveAll(bin)
-	data, _ := os.ReadFile(filepath.Join(dir, asset))
-	sum := sha256.Sum256(data)
-	if corrupt {
-		sum[0]++
-	}
-	os.WriteFile(filepath.Join(dir, "SHA256SUMS"), fmt.Appendf(nil, "%x  %s\n", sum, asset), 0o644)
+	os.WriteFile(filepath.Join(dir, "SHA256SUMS"), sums, 0o644)
 	return dir
 }
 
@@ -86,5 +90,19 @@ func TestTunnelScript(t *testing.T) {
 	}
 	if out, err := run(fakeRelease(t, true), t.TempDir(), "myapp", "--http", "3000"); err == nil || !strings.Contains(out, "does not match its checksum") {
 		t.Errorf("corrupt download: %v\n%s", err, out)
+	}
+
+	// --install puts intergate-tunnel in place and has it add the subdomain
+	// and install its service; with --user, all of it is the user's.
+	home = t.TempDir()
+	out, err := run(good, home, "myapp", "--http", "3000", "--install", "--user")
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	wantAdd := fmt.Sprintf("tunnel add myapp --dashboard http://%s/ --host-key %s --http 3000 --user", domain, fp)
+	if err != nil || len(lines) != 3 || !strings.Contains(lines[0], home+"/.local/bin/intergate-tunnel") ||
+		lines[1] != wantAdd || lines[2] != "tunnel install --user" {
+		t.Errorf("--install --user: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".local", "bin", "intergate-tunnel")); err != nil {
+		t.Errorf("intergate-tunnel not installed: %v", err)
 	}
 }

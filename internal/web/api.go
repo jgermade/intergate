@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jgermade/intergate/internal/api"
+	"github.com/jgermade/intergate/internal/config"
 	"github.com/jgermade/intergate/internal/manage"
 	"github.com/jgermade/intergate/internal/store"
 )
@@ -156,6 +158,11 @@ func (s *Server) handleSubdomain(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "list ports", err)
 		return
 	}
+	quota, err := s.portQuota(r.Context(), d)
+	if err != nil {
+		s.internalError(w, "port quota", err)
+		return
+	}
 	portList := make([]api.Port, len(list))
 	for i, p := range list {
 		portList[i] = api.NewPort(s.cfg, p, s.manage.PortStats(p.Port))
@@ -171,6 +178,9 @@ func (s *Server) handleSubdomain(w http.ResponseWriter, r *http.Request) {
 		// ClientIP is the address the dashboard sees, to fill in allow lists.
 		ClientIP string `json:"client_ip"`
 		Mine     bool   `json:"mine"`
+		// PortQuota is how many ports the subdomain's owner has, across
+		// their subdomains, and may have.
+		PortQuota portQuota `json:"port_quota"`
 	}{
 		SubdomainDetail:      api.SubdomainDetail{Subdomain: s.view(d), KeyList: api.NewKeys(keys), PortList: portList},
 		SSHCommand:           s.sshCommand(d.Name),
@@ -179,7 +189,20 @@ func (s *Server) handleSubdomain(w http.ResponseWriter, r *http.Request) {
 		TunnelCommandWindows: s.tunnelCommand(d.Name, list, true),
 		ClientIP:             s.clientIP(r),
 		Mine:                 d.UserID == currentAuth(r).User.ID,
+		PortQuota:            quota,
 	})
+}
+
+type portQuota struct {
+	Used   int    `json:"used"`
+	Max    int    `json:"max"`
+	Ranges string `json:"ranges"`
+}
+
+// portQuota is how many ports d's owner has and may have.
+func (s *Server) portQuota(ctx context.Context, d *store.Subdomain) (portQuota, error) {
+	used, l, err := s.manage.PortQuota(ctx, d)
+	return portQuota{Used: used, Max: l.Ports, Ranges: config.FormatPortRanges(l.Ranges)}, err
 }
 
 func (s *Server) handleUpdateSubdomain(w http.ResponseWriter, r *http.Request) {
@@ -291,10 +314,12 @@ type portRequest struct {
 	Preset    string         `json:"preset"`
 	LocalPort int            `json:"local_port"`
 	Allow     []string       `json:"allow"`
+	// Port is the public number asked for, when adding; 0 for any.
+	Port int `json:"port"`
 }
 
 func (p portRequest) input() manage.PortInput {
-	return manage.PortInput{Name: p.Name, Protocol: p.Protocol, Preset: p.Preset, LocalPort: p.LocalPort, Allow: p.Allow}
+	return manage.PortInput{Name: p.Name, Protocol: p.Protocol, Preset: p.Preset, LocalPort: p.LocalPort, Allow: p.Allow, Port: p.Port}
 }
 
 func (s *Server) handleAddPort(w http.ResponseWriter, r *http.Request) {
@@ -414,7 +439,7 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]api.User, len(users))
 	for i, u := range users {
-		out[i] = api.NewUser(s.cfg, u)
+		out[i] = api.NewUser(s.cfg, u, s.manage.Limits(&u.User))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -433,7 +458,7 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, "create user", err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, api.NewUser(s.cfg, store.UserSummary{User: *u}))
+	writeJSON(w, http.StatusCreated, api.NewUser(s.cfg, store.UserSummary{User: *u}, s.manage.Limits(u)))
 }
 
 func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
@@ -477,11 +502,18 @@ func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Disabled *bool       `json:"disabled"`
 		Role     *store.Role `json:"role"`
+		// Limits replaces all of the user's limits; a null count is the
+		// configuration's.
+		Limits *struct {
+			Subdomains *int   `json:"subdomains"`
+			Ports      *int   `json:"ports"`
+			Ranges     string `json:"ranges"`
+		} `json:"limits"`
 	}
 	if !decode(w, r, &req) {
 		return
 	}
-	if req.Disabled == nil && req.Role == nil {
+	if req.Disabled == nil && req.Role == nil && req.Limits == nil {
 		jsonError(w, http.StatusBadRequest, "Nothing to change.")
 		return
 	}
@@ -501,6 +533,16 @@ func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	if req.Role != nil {
 		if err := s.manage.SetUserRole(r.Context(), id, *req.Role, a.User, a.Role); err != nil {
 			s.fail(w, "set user role", err)
+			return
+		}
+	}
+	if req.Limits != nil {
+		if !s.mayManageOwner(w, r, id, "change the limits of") {
+			return
+		}
+		in := manage.LimitsInput{Subdomains: req.Limits.Subdomains, Ports: req.Limits.Ports, Ranges: req.Limits.Ranges}
+		if err := s.manage.SetUserLimits(r.Context(), id, in, a.User.Email); err != nil {
+			s.fail(w, "set user limits", err)
 			return
 		}
 	}

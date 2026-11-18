@@ -140,8 +140,17 @@ func TestAppUI(t *testing.T) {
 	if code, _ := do("GET", "/api/state", ui.Token(), "evil.example:1234", ""); code != http.StatusForbidden {
 		t.Errorf("another Host: %d", code)
 	}
-	if code, page := do("GET", "/?t="+ui.Token(), "", "", ""); code != http.StatusOK || !strings.Contains(page, `const TOKEN = "`+ui.Token()+`"`) {
-		t.Errorf("page: %d", code)
+	if code, page := do("GET", "/?t="+ui.Token(), "", "", ""); code != http.StatusOK || !strings.Contains(page, `{"token": "`+ui.Token()+`"}`) {
+		t.Errorf("page: %d\n%s", code, page)
+	}
+	// The window is drawn with the dashboard's theme, served beside it.
+	for _, path := range []string{"/ui/vendor/jq79.js", "/ui/theme/default/tokens.css", "/ui/theme/default/components/card.html", "/ui/app.css", "/app/app.html", "/app/app.css"} {
+		if code, _ := do("GET", path, ui.Token(), "", ""); code != http.StatusOK {
+			t.Errorf("%s: %d", path, code)
+		}
+	}
+	if code, _ := do("GET", "/app/index.html", ui.Token(), "", ""); code != http.StatusNotFound {
+		t.Errorf("the page's template served raw: %d", code)
 	}
 	if code, _ := do("POST", "/api/connect?t="+ui.Token(), "", "", ""); code != http.StatusForbidden {
 		t.Errorf("a change without the header: %d", code)

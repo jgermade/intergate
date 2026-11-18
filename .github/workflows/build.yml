@@ -50,6 +50,16 @@ jobs:
           for target in windows/amd64 windows/arm64 linux/amd64; do
             CGO_ENABLED=0 GOOS=${target%/*} GOARCH=${target#*/} go build -o /dev/null ./cmd/intergate-gui
           done
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            CGO_ENABLED=0 GOOS=${target%/*} GOARCH=${target#*/} go build -o /dev/null ./cmd/intergate-tunnel
+          done
+      - name: intergate-tunnel stays free of the server
+        run: |
+          # The client alone: no SQLite, dashboard or server packages.
+          if go list -deps ./cmd/intergate-tunnel | grep -E 'modernc.org/sqlite|internal/(server|web|store|sshd|manage)$'; then
+            echo "::error::intergate-tunnel pulls in the server"
+            exit 1
+          fi
       - name: Version
         id: version
         run: |
@@ -95,18 +105,31 @@ jobs:
             ;;
           esac
           cp README.md "dist/intergate-$target/"
+          # The client alone, for machines that only open tunnels:
+          # intergate-tunnel-<target>/intergate-tunnel(.exe).
+          tunnel=intergate-tunnel
+          case "$target" in windows-*) tunnel=intergate-tunnel.exe ;; esac
+          mkdir -p "dist/intergate-tunnel-$target"
+          CGO_ENABLED=0 GOOS=${target%-*} GOARCH=${target#*-} go build -trimpath \
+            -ldflags "-s -w -X main.version=${{ needs.test.outputs.version }}" \
+            -o "dist/intergate-tunnel-$target/$tunnel" ./cmd/intergate-tunnel
+          cp README.md "dist/intergate-tunnel-$target/"
           # The layout pages/setup.sh, tunnel.sh and tunnel.ps1 unpack:
           # intergate-<target>/intergate(.exe), a zip for Windows.
-          case "$target" in
-          windows-*) (cd dist && zip -qr "intergate-$target.zip" "intergate-$target") ;;
-          *) tar -czf "dist/intergate-$target.tar.gz" -C dist "intergate-$target" ;;
-          esac
+          for name in intergate intergate-tunnel; do
+            case "$target" in
+            windows-*) (cd dist && zip -qr "$name-$target.zip" "$name-$target") ;;
+            *) tar -czf "dist/$name-$target.tar.gz" -C dist "$name-$target" ;;
+            esac
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: intergate-${{ matrix.target }}
           path: |
             dist/intergate-${{ matrix.target }}.tar.gz
             dist/intergate-${{ matrix.target }}.zip
+            dist/intergate-tunnel-${{ matrix.target }}.tar.gz
+            dist/intergate-tunnel-${{ matrix.target }}.zip
           if-no-files-found: error
 
   # The one-line installer walked against builds of this tree: install,

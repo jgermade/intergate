@@ -18,6 +18,8 @@ var (
 	ErrConflict = errors.New("already exists")
 	// ErrFull is returned when a range has no free port left.
 	ErrFull = errors.New("no free port")
+	// ErrTaken is returned when the port asked for belongs to another.
+	ErrTaken = errors.New("port taken")
 )
 
 // Store wraps the SQLite database.
@@ -144,6 +146,15 @@ var migrations = []string{
 	);
 	ALTER TABLE ssh_keys ADD COLUMN user_key_id INTEGER REFERENCES user_keys(id) ON DELETE CASCADE;
 	CREATE INDEX ssh_keys_user_key ON ssh_keys(user_key_id);`,
+	// Limits an administrator set for one user, instead of the
+	// configuration's (NULL): how many subdomains and ports, and the
+	// ranges their ports' numbers come from (empty: all of tcp.ports).
+	`ALTER TABLE users ADD COLUMN max_subdomains INTEGER;
+	ALTER TABLE users ADD COLUMN max_ports INTEGER;
+	ALTER TABLE users ADD COLUMN port_ranges TEXT NOT NULL DEFAULT '';`,
+	// Who created a port: a user's email from the dashboard, or a key
+	// from the intergate client.
+	`ALTER TABLE tcp_ports ADD COLUMN created_by TEXT NOT NULL DEFAULT '';`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {

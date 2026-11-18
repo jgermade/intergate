@@ -107,7 +107,7 @@ tcp:
   enabled: false
   first: 30000
   last: 30019
-  maxPorts: 5
+  maxPorts: 5  # per user, across their subdomains
   # Also expose the range over UDP, for UDP ports (the intergate client).
   # Needs LoadBalancers that take both protocols (Kubernetes 1.26+).
   udp: true

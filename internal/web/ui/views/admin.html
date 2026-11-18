@@ -117,6 +117,39 @@
     load()
   }
 
+  // A user's limits: how many subdomains and ports, and the ranges their
+  // ports' numbers come from. Empty fields go back to the configuration's.
+  let limitsOpen = false
+  let limitsUser = null
+  let limitsForm = { subdomains: "", ports: "", ranges: "" }
+  let limitsError = ""
+  const editLimits = user => {
+    const l = user.limits
+    limitsUser = user
+    limitsForm = {
+      subdomains: l.custom_subdomains ? String(l.subdomains) : "",
+      ports: l.custom_ports ? String(l.ports) : "",
+      ranges: l.custom_ranges ? l.ranges : "",
+    }
+    limitsError = ""
+    limitsOpen = true
+  }
+  const count = v => (v.trim() === "" ? null : Number(v))
+  const saveLimits = async () => {
+    limitsError = ""
+    try {
+      await api("PATCH", "/admin/users/" + limitsUser.id, {
+        limits: { subdomains: count(limitsForm.subdomains), ports: count(limitsForm.ports), ranges: limitsForm.ranges.trim() },
+      })
+      limitsOpen = false
+      toast(`Saved the limits of ${limitsUser.email}.`)
+      load()
+    } catch (e) {
+      limitsError = e.message
+    }
+  }
+  const tcpRange = app.tcp ? app.tcp.first + "-" + app.tcp.last : ""
+
   // The user the delete dialog asks about; kept while it plays its way out.
   let asking = false
   let deleting = null
@@ -369,7 +402,7 @@
 <div :if="tab === 'users'" role="tabpanel" aria-label="Users"><Card>
   <div class="table-wrap">
     <table class="table tiles">
-      <thead><tr><th>User</th><th>Role</th><th class="hide-narrow">Sign-in</th><th class="hide-narrow">Subdomains</th><th class="hide-narrow">Last sign-in</th><th class="center">Enabled</th><th></th></tr></thead>
+      <thead><tr><th>User</th><th>Role</th><th class="hide-narrow">Sign-in</th><th class="hide-narrow">Subdomains</th><th :if="app.tcp" class="hide-narrow">Ports</th><th class="hide-narrow">Last sign-in</th><th class="center">Enabled</th><th></th></tr></thead>
       <tbody>
         <tr :each="user in users" :key="user.id" :class.disabled="user.disabled">
           <td class="user-cell">
@@ -391,7 +424,10 @@
             <span :else class="value"><span class="role-user"><Icon name="user" /></span>User</span>
           </td>
           <td class="small hide-narrow">{{ signIn(user) }}</td>
-          <td class="hide-narrow">{{ user.subdomains }}</td>
+          <td class="hide-narrow">{{ user.subdomains }} <span class="muted small">of {{ user.limits.subdomains }}</span></td>
+          <td :if="app.tcp" class="hide-narrow">{{ user.ports }} <span class="muted small">of {{ user.limits.ports }}</span>
+            <div :if="user.limits.custom_ranges" class="muted small">{{ user.limits.ranges || "no ports in range" }}</div>
+          </td>
           <td class="hide-narrow">{{ ago(user.last_login_at) }}</td>
           <td class="center keep">
             <Switch :if="canToggle(user)" :on="!user.disabled" :title="user.disabled ? 'Disabled' : 'Enabled'"
@@ -399,6 +435,8 @@
             <span :else class="state" :class.state-off="user.disabled" role="img" :aria-label="user.disabled ? 'Disabled' : 'Enabled'" :title="user.disabled ? 'Disabled' : 'Enabled'"></span>
           </td>
           <td class="right keep">
+            <Button :if="owner || user.role !== 'owner'" variant="ghost" square icon="sliders" title="Limits" :label="'Limits of ' + user.email"
+                    @click="editLimits(user)" />
             <Button :if="canManage(user)" variant="ghost-danger" square icon="trash" title="Delete" :label="'Delete ' + user.email"
                     @click="askDelete(user)" />
           </td>
@@ -449,7 +487,7 @@
     </table>
   </div>
   <p :else class="empty-inline">No subdomains registered.</p>
-  <p :if="app.tcp" class="hint">Ports {{ app.tcp.first }}–{{ app.tcp.last }}: {{ portsUsed }} of {{ app.tcp.last - app.tcp.first + 1 }} in use, at most {{ app.tcp.max_ports }} per subdomain.</p>
+  <p :if="app.tcp" class="hint">Ports {{ app.tcp.first }}–{{ app.tcp.last }}: {{ portsUsed }} of {{ app.tcp.last - app.tcp.first + 1 }} in use, at most {{ app.tcp.max_ports }} per user unless their limits say otherwise.</p>
 </Card></div>
 
 <div :elseif="tab === 'relay'" role="tabpanel" aria-label="SMTP relay"><Card title="SMTP relay">
@@ -566,6 +604,30 @@
   <template :slot.foot>
     <Button variant="secondary" @click="removingDNS = false">Cancel</Button>
     <Button variant="danger" @click="removeDNS">Remove</Button>
+  </template>
+</Modal>
+
+<Modal :open="limitsOpen" size="md" :title="'Limits of ' + (limitsUser ? limitsUser.email : '')" @close="limitsOpen = false">
+  <form id="user-limits" class="form" @submit.prevent="saveLimits">
+    <Alert :if="limitsError" tone="bad" flush>{{ limitsError }}</Alert>
+    <label>Subdomains
+      <input type="number" min="0" inputmode="numeric" :placeholder="app.limits.default_subdomains + ' (default)'"
+             :value="limitsForm.subdomains" @input="limitsForm.subdomains = $event.target.value">
+    </label>
+    <label :if="app.tcp">Extra ports, across their subdomains
+      <input type="number" min="0" inputmode="numeric" :placeholder="app.tcp.max_ports + ' (default)'"
+             :value="limitsForm.ports" @input="limitsForm.ports = $event.target.value">
+    </label>
+    <label :if="app.tcp">Port ranges
+      <input type="text" spellcheck="false" autocomplete="off" :placeholder="tcpRange + ' (all of tcp.ports)'"
+             :value="limitsForm.ranges" @input="limitsForm.ranges = $event.target.value">
+    </label>
+    <p :if="app.tcp" class="hint">Where their ports’ numbers come from, inside {{ tcpRange }}: like <code>30100-30109,30200-30299</code>. Other users may share them.</p>
+    <p class="hint">Leave a field empty for the configuration’s. Lowering a limit keeps what they have; they just can’t add more.</p>
+  </form>
+  <template :slot.foot>
+    <Button variant="secondary" @click="limitsOpen = false">Cancel</Button>
+    <Button type="submit" form="user-limits">Save</Button>
   </template>
 </Modal>
 

@@ -16,6 +16,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/jgermade/intergate/internal/config"
+	"github.com/jgermade/intergate/internal/manage"
 	"github.com/jgermade/intergate/internal/names"
 	"github.com/jgermade/intergate/internal/ports"
 	"github.com/jgermade/intergate/internal/store"
@@ -37,6 +38,10 @@ type Server struct {
 	ports    *ports.Registry
 	log      *slog.Logger
 	sshCfg   *ssh.ServerConfig
+
+	// Manage, if set, lets the intergate client see and change the ports
+	// of the subdomains its key opens (package wire).
+	Manage *manage.Service
 
 	// hinted holds clients (by remote address) already told that their
 	// key is unknown, during their handshake.

@@ -75,6 +75,8 @@
   let preset = "postgresql"
   let name = "postgres"
   let localPort = 5432
+  // The public number asked for; empty takes the lowest free one.
+  let publicPort = ""
   let who = "only"
   let allowText = sub.client_ip
   let error = ""
@@ -97,6 +99,7 @@
 
   const startAdd = () => {
     choose("postgresql")
+    publicPort = ""
     allowText = sub.client_ip
     error = ""
     adding = true
@@ -107,7 +110,7 @@
     busy = true
     try {
       const protocol = presetOf(preset).udp ? "udp" : "tcp"
-      const port = await api("POST", path() + "/ports", { ...body(name, localPort, who === "only", allowText), preset, protocol })
+      const port = await api("POST", path() + "/ports", { ...body(name, localPort, who === "only", allowText), preset, protocol, port: Number(publicPort) || 0 })
       adding = false
       toast(`Added ${port.name}: ${port.address}.`)
       $emit("changed")
@@ -175,7 +178,9 @@
   }
 
   const access = port => port.allow.length ? port.allow.join(", ") : "Anyone"
-  $: full = sub.port_list.length >= app.tcp.max_ports
+  // The quota is the owner's, across all their subdomains.
+  $: quota = sub.port_quota
+  $: full = quota.used >= quota.max
   $: warning = presetOf(preset).warn
   $: udp = !!presetOf(preset).udp
   $: hasUDP = sub.port_list.some(port => port.protocol === "udp")
@@ -183,7 +188,7 @@
 
 <Card title="Ports">
   <template :slot.aside>
-    <Badge>{{ sub.port_list.length }} of {{ app.tcp.max_ports }}</Badge>
+    <Badge :title="quota.used + ' of ' + quota.max + ' ports across ' + (sub.mine ? 'your' : 'the owner’s') + ' subdomains'">{{ quota.used }} of {{ quota.max }}</Badge>
     <Button :if="!full" variant="secondary" size="sm" icon="plus" @click="startAdd">Add port</Button>
   </template>
   <p class="muted intro">Raw TCP and UDP on <strong>{{ app.tcp.host }}</strong> for databases, SSH, games… Each port has a public number of its own, and only the addresses you allow can connect.</p>
@@ -196,6 +201,7 @@
           <td>
             <strong>{{ port.name }}</strong>
             <div class="muted small"><span class="proto">{{ port.protocol }}</span> {{ presetOf(port.preset).id && !presetOf(port.preset).label.startsWith("Custom") ? presetOf(port.preset).label.replace(" (UDP)", "") + " · " : "" }}localhost:{{ port.local_port }}</div>
+            <div :if="port.created_by" class="muted small hide-narrow">added by {{ port.created_by }}</div>
           </td>
           <td class="keep">
             <span class="address">
@@ -230,7 +236,7 @@
     </div>
     <CopyText :if="os === 'unix'" :command="sub.tunnel_command" />
     <CopyText :else :command="sub.tunnel_command_windows" />
-    <p class="muted small">Plain <code>ssh</code> only carries TCP. The script downloads the client for this server, checks it and deletes it when it ends (<code>--cache</code> first keeps it). Add <code>--http 3000</code> for the HTTP tunnel.<span :if="os === 'windows'"> In PowerShell; keys come from the OpenSSH agent (<code>ssh-add</code>) or <code>%USERPROFILE%\.ssh</code>. Rather a window and a tray icon? <a href="https://github.com/jgermade/intergate/releases/latest" target="_blank" rel="noopener">The intergate app</a> (<code>intergate-gui.exe</code>, in the same download) does the same.</span> UDP over SSH suits games and DNS-like traffic; fast-paced games and calls may feel jittery.</p>
+    <p class="muted small">Plain <code>ssh</code> only carries TCP. The script downloads the client for this server, checks it and deletes it when it ends (<code>--cache</code> first keeps it). Add <code>--http 3000</code> for the HTTP tunnel<span :if="os === 'unix'">, and <code>--install</code> to keep it open as a service started at boot</span>.<span :if="os === 'windows'"> In PowerShell; keys come from the OpenSSH agent (<code>ssh-add</code>) or <code>%USERPROFILE%\.ssh</code>. Rather a window and a tray icon? <a href="https://github.com/jgermade/intergate/releases/latest" target="_blank" rel="noopener">The intergate app</a> (<code>intergate-gui.exe</code>, in the same download) does the same.</span> UDP over SSH suits games and DNS-like traffic; fast-paced games and calls may feel jittery.</p>
   </div>
   <div :elseif="sub.ports_command">
     <p class="muted">To forward them, with an authorized key:</p>
@@ -238,7 +244,7 @@
     <p class="muted small">Each <code>-R</code> names a port as <code>&lt;port&gt;.{{ sub.name }}</code>; change the local ports to yours. You can add these to the HTTP tunnel’s command.</p>
   </div>
 
-  <p :if="full" class="hint">A subdomain can have at most {{ app.tcp.max_ports }} ports: delete one to add another.</p>
+  <p :if="full" class="hint">{{ sub.mine ? "You have" : "Its owner has" }} {{ quota.used }} of the {{ quota.max }} ports {{ sub.mine ? "you" : "they" }} may have across {{ sub.mine ? "your" : "their" }} subdomains: delete one to add another, or ask an administrator for more.</p>
 </Card>
 
 <Modal :open="adding" size="lg" :title="'Add a port to ' + sub.name" @close="adding = false">
@@ -255,7 +261,11 @@
       <label>Local port
         <input name="local-port" type="number" required min="1" max="65535" placeholder="5432" :value="localPort" @input="localPort = $event.target.value">
       </label>
+      <label>Public port
+        <input name="public-port" type="number" min="1" max="65535" inputmode="numeric" placeholder="any free one" :value="publicPort" @input="publicPort = $event.target.value">
+      </label>
     </div>
+    <p class="hint">Public ports come from {{ quota.ranges }}. The number stays the port’s until it is deleted.</p>
     <Alert :if="warning" tone="warn" flush>{{ warning }}</Alert>
     <Alert :if="udp" flush>UDP ports are forwarded with the intergate client, not plain <code>ssh</code>: the page shows the command once the port exists.</Alert>
     <fieldset>
