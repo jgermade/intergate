@@ -293,15 +293,22 @@ func gateFor(ctx context.Context, cfg *Config, host, dashboard, hostKey string) 
 	return info.Domain, sub, g, true, err
 }
 
+// errNotHTTPS is returned, with the gate, when nothing vouches for its
+// host key: its dashboard is on plain HTTP and none was given to check.
+var errNotHTTPS = errors.New("the dashboard is not on HTTPS, so its host key can't be trusted")
+
 func newGate(info *client.GateInfo, hostKey string, https bool) (*Gate, error) {
+	g := &Gate{Dashboard: info.Dashboard, Server: info.Server, HostKey: info.HostKey, Tunnels: map[string]*Tunnel{}}
 	switch {
 	case hostKey != "" && hostKey != info.HostKey:
 		return nil, fmt.Errorf("the gate's host key is %s, not %s", info.HostKey, hostKey)
 	case hostKey == "" && !https:
-		return nil, fmt.Errorf("the dashboard is not on HTTPS, so its host key can't be trusted: check it there and pass --host-key %s", info.HostKey)
+		return g, fmt.Errorf("%w: check it there and pass --host-key %s", errNotHTTPS, info.HostKey)
 	}
-	return &Gate{Dashboard: info.Dashboard, Server: info.Server, HostKey: info.HostKey, Tunnels: map[string]*Tunnel{}}, nil
+	return g, nil
 }
+
+func sshAuth(s ssh.Signer) []ssh.AuthMethod { return []ssh.AuthMethod{ssh.PublicKeys(s)} }
 
 // connect signs in to g as sub with the machine's key. With wait, and a
 // terminal, it shows the key and waits for someone to add it.
