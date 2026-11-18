@@ -34,9 +34,13 @@ release() {
 	mkdir -p "$dir/intergate-$target"
 	(cd "$root" && CGO_ENABLED=0 go build -trimpath -ldflags "-X main.version=$1" \
 		-o "$dir/intergate-$target/intergate" ./cmd/intergate)
+	mkdir -p "$dir/intergate-tunnel-$target"
+	(cd "$root" && CGO_ENABLED=0 go build -trimpath -ldflags "-X main.version=$1" \
+		-o "$dir/intergate-tunnel-$target/intergate-tunnel" ./cmd/intergate-tunnel)
 	tar -czf "$dir/$name" -C "$dir" "intergate-$target"
-	rm -rf "${dir:?}/intergate-$target"
-	(cd "$dir" && sum "$name" >SHA256SUMS)
+	tar -czf "$dir/intergate-tunnel-$target.tar.gz" -C "$dir" "intergate-tunnel-$target"
+	rm -rf "${dir:?}/intergate-$target" "${dir:?}/intergate-tunnel-$target"
+	(cd "$dir" && sum "$name" "intergate-tunnel-$target.tar.gz" >SHA256SUMS)
 }
 release 0.0.1
 release 0.0.2
@@ -121,5 +125,22 @@ setup install >/dev/null
 printf 'data_dir: /\n' >"$config"
 if setup uninstall --purge --yes >"$work/out" 2>&1; then fail "--purge accepted data_dir: /"; fi
 expect 'will not delete' "the dangerous data_dir was not reported"
+
+step "client installs intergate-tunnel beside it, and points at its wizard"
+setup install >/dev/null
+setup client </dev/null | tee "$work/out"
+expect '^Installed intergate-tunnel 0.0.2' "client did not install intergate-tunnel"
+expect 'intergate-tunnel setup' "client did not point at the wizard"
+[ "$("$work/bin/intergate-tunnel" --version)" = "intergate-tunnel 0.0.2" ] || fail "the installed client is not 0.0.2"
+
+step "client again, which has nothing to install"
+setup client </dev/null | tee "$work/out"
+expect 'intergate-tunnel 0.0.2 is already installed' "a second client install replaced the binary"
+
+step "uninstall-client removes it and nothing of the server"
+setup uninstall-client </dev/null | tee "$work/out"
+expect "^Removed $work/bin/intergate-tunnel" "uninstall-client did not remove intergate-tunnel"
+[ ! -e "$work/bin/intergate-tunnel" ] || fail "intergate-tunnel is still there"
+[ -x "$bin" ] || fail "uninstall-client removed the server"
 
 printf '\nAll installer checks passed.\n'

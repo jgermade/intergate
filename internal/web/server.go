@@ -610,7 +610,7 @@ func (s *Server) handleTunnelScript(w http.ResponseWriter, r *http.Request) {
 	data := struct{ Dashboard, URL, Version, Server, HostKey string }{
 		s.cfg.DashboardURL("/"), s.cfg.DashboardURL(r.URL.Path), version, s.sshServer(), s.hostKey,
 	}
-	if !shellSafe.MatchString(data.Server) || !shellSafe.MatchString(data.HostKey) {
+	if !shellSafe.MatchString(data.Server) || !shellSafe.MatchString(data.HostKey) || !shellSafe.MatchString(data.Dashboard) {
 		http.Error(w, "the SSH host can't be written into a script", http.StatusInternalServerError)
 		return
 	}

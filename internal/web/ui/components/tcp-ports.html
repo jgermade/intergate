@@ -236,7 +236,7 @@
     </div>
     <CopyText :if="os === 'unix'" :command="sub.tunnel_command" />
     <CopyText :else :command="sub.tunnel_command_windows" />
-    <p class="muted small">Plain <code>ssh</code> only carries TCP. The script downloads the client for this server, checks it and deletes it when it ends (<code>--cache</code> first keeps it). Add <code>--http 3000</code> for the HTTP tunnel.<span :if="os === 'windows'"> In PowerShell; keys come from the OpenSSH agent (<code>ssh-add</code>) or <code>%USERPROFILE%\.ssh</code>. Rather a window and a tray icon? <a href="https://github.com/jgermade/intergate/releases/latest" target="_blank" rel="noopener">The intergate app</a> (<code>intergate-gui.exe</code>, in the same download) does the same.</span> UDP over SSH suits games and DNS-like traffic; fast-paced games and calls may feel jittery.</p>
+    <p class="muted small">Plain <code>ssh</code> only carries TCP. The script downloads the client for this server, checks it and deletes it when it ends (<code>--cache</code> first keeps it). Add <code>--http 3000</code> for the HTTP tunnel<span :if="os === 'unix'">, and <code>--install</code> to keep it open as a service started at boot</span>.<span :if="os === 'windows'"> In PowerShell; keys come from the OpenSSH agent (<code>ssh-add</code>) or <code>%USERPROFILE%\.ssh</code>. Rather a window and a tray icon? <a href="https://github.com/jgermade/intergate/releases/latest" target="_blank" rel="noopener">The intergate app</a> (<code>intergate-gui.exe</code>, in the same download) does the same.</span> UDP over SSH suits games and DNS-like traffic; fast-paced games and calls may feel jittery.</p>
   </div>
   <div :elseif="sub.ports_command">
     <p class="muted">To forward them, with an authorized key:</p>

@@ -5,6 +5,7 @@
 #   curl -fsSL https://jgermade.github.io/intergate/setup.sh | sh -s -- reinstall
 #   curl -fsSL https://jgermade.github.io/intergate/setup.sh | sh -s -- uninstall
 #   curl -fsSL https://jgermade.github.io/intergate/setup.sh | sh -s -- setup-url
+#   curl -fsSL https://jgermade.github.io/intergate/setup.sh | sh -s -- client
 #   wget -qO- https://jgermade.github.io/intergate/setup.sh | sh     # without curl
 #
 # With no command and a terminal to ask on, it asks what to do: install, and —
@@ -18,6 +19,10 @@
 # configuration leaves them to it. An update restarts the service.
 # `uninstall` keeps the configuration and data unless `--purge` says otherwise.
 #
+# `client` installs intergate-tunnel instead, the client alone, for a machine
+# that keeps tunnels open to a gate, and opens its wizard; `uninstall-client`
+# removes it.
+#
 # Everything is a function and the last line calls `main`, so a download that
 # was cut short runs nothing. POSIX sh, because `| sh` is dash on Debian.
 
@@ -26,6 +31,8 @@ set -eu
 REPO="jgermade/intergate"
 SETUP_URL="https://jgermade.github.io/intergate/setup.sh"
 UNIT="/etc/systemd/system/intergate.service"
+CLIENT_UNIT="/etc/systemd/system/intergate-tunnel.service"
+CLIENT_CONFIG_DIR="/etc/intergate-tunnel"
 TMP=""
 
 usage() {
@@ -46,6 +53,11 @@ Commands:
                the link given before.
   uninstall    Stop and remove the service and the binary. The configuration
                and data are kept unless --purge.
+  client       Install or update intergate-tunnel, the client alone, to keep
+               this machine's tunnels to a gate open, and open its wizard.
+  uninstall-client
+               Stop and remove intergate-tunnel and its service. Its
+               configuration and key are kept unless --purge.
   help         Show this text.
 
 With no command, the script asks which of these to do, offering the last ones
@@ -60,13 +72,15 @@ Options:
   --no-service     Do not offer to install or restart the systemd service.
   --purge          With uninstall: also delete the configuration, the data
                    directory (subdomains, keys, users) and the service user.
+                   With uninstall-client: its configuration, key and user.
   -y, --yes        Do not ask: install the service, and delete with --purge.
   -h, --help       Show this text.
 
 Environment:
   INTERGATE_DOWNLOAD_URL   A directory holding intergate-<os>-<arch>.tar.gz
-                            and SHA256SUMS, used instead of GitHub: a mirror,
-                            or file:// for a build of your own.
+                            (and intergate-tunnel-<os>-<arch>.tar.gz) and
+                            SHA256SUMS, used instead of GitHub: a mirror, or
+                            file:// for a build of your own.
 EOF
 }
 
@@ -276,6 +290,51 @@ already_installed() {
 	say "To download it again: curl -fsSL $SETUP_URL | sh -s -- reinstall"
 }
 
+# fetch_release NAME: downloads NAME-<target>.tar.gz of the release,
+# checks it against SHA256SUMS, unpacks it and runs it once. Sets NEW, the
+# binary, and NEW_VERSION.
+fetch_release() {
+	[ -n "$TMP" ] || TMP=$(mktemp -d "${TMPDIR:-/tmp}/intergate-setup.XXXXXX")
+	asset="$1-$TARGET.tar.gz"
+	say "Downloading $1 ${TAG:+$TAG }for $TARGET..."
+	if ! fetch "$BASE/$asset" "$TMP/$asset"; then
+		die "could not download $BASE/$asset.
+${TAG:+Release $TAG may have no build for $TARGET: see https://github.com/$REPO/releases/tag/$TAG
+}To build it from source instead:
+  go install github.com/$REPO/cmd/$1@latest"
+	fi
+
+	want=$(expected_sum "$asset")
+	got=$(sha256 "$TMP/$asset")
+	[ -n "$got" ] || die "no sha256sum, shasum or openssl here to check the download with"
+	[ "$got" = "$want" ] || die "$asset does not match its checksum (expected $want, got $got)"
+
+	tar -xzf "$TMP/$asset" -C "$TMP" || die "could not unpack $asset"
+	NEW="$TMP/$1-$TARGET/$1"
+	[ -f "$NEW" ] || die "$asset has no $1 binary in it"
+	chmod 755 "$NEW"
+	# Run before it replaces anything: a binary this system cannot run must
+	# not take the place of one that works.
+	if ! "$NEW" --version </dev/null >"$TMP/version" 2>"$TMP/error"; then
+		die "the downloaded $1 does not run on this system:
+$(cat "$TMP/error")"
+	fi
+	NEW_VERSION=$(awk '{ print $2; exit }' "$TMP/version")
+}
+
+# put_binary FILE NAME: installs FILE as $DIR/NAME.
+put_binary() {
+	maybe_root "$DIR" mkdir -p "$DIR" || die "could not create $DIR"
+	# Copied beside the old one and renamed over it: nobody ever runs half a
+	# binary, and a server already running keeps the file it started from.
+	# shellcheck disable=SC2016 # $1..$4 are the inner shell's arguments
+	if ! maybe_root "$DIR" sh -c 'cp "$1" "$2/.$4.$3" && mv -f "$2/.$4.$3" "$2/$4"' \
+		sh "$1" "$DIR" "$$" "$2"; then
+		maybe_root "$DIR" rm -f "$DIR/.$2.$$"
+		die "could not write $DIR/$2"
+	fi
+}
+
 install_intergate() {
 	force=$1
 	need curl || need wget || die "curl or wget is needed to download intergate"
@@ -291,47 +350,15 @@ install_intergate() {
 		return
 	fi
 
-	TMP=$(mktemp -d "${TMPDIR:-/tmp}/intergate-setup.XXXXXX")
-	asset="intergate-$TARGET.tar.gz"
-	say "Downloading intergate ${TAG:+$TAG }for $TARGET..."
-	if ! fetch "$BASE/$asset" "$TMP/$asset"; then
-		die "could not download $BASE/$asset.
-${TAG:+Release $TAG may have no build for $TARGET: see https://github.com/$REPO/releases/tag/$TAG
-}To build it from source instead:
-  go install github.com/$REPO/cmd/intergate@latest"
-	fi
-
-	want=$(expected_sum "$asset")
-	got=$(sha256 "$TMP/$asset")
-	[ -n "$got" ] || die "no sha256sum, shasum or openssl here to check the download with"
-	[ "$got" = "$want" ] || die "$asset does not match its checksum (expected $want, got $got)"
-
-	tar -xzf "$TMP/$asset" -C "$TMP" || die "could not unpack $asset"
-	new="$TMP/intergate-$TARGET/intergate"
-	[ -f "$new" ] || die "$asset has no intergate binary in it"
-	chmod 755 "$new"
-	# Run before it replaces anything: a binary this system cannot run must
-	# not take the place of one that works.
-	if ! "$new" --version </dev/null >"$TMP/version" 2>"$TMP/error"; then
-		die "the downloaded intergate does not run on this system:
-$(cat "$TMP/error")"
-	fi
-	version=$(awk '{ print $2; exit }' "$TMP/version")
+	fetch_release intergate
+	new=$NEW
+	version=$NEW_VERSION
 	if [ "$force" = 0 ] && [ -n "$current" ] && [ "$current" = "$version" ]; then
 		already_installed "$current"
 		first_run
 		return
 	fi
-
-	maybe_root "$DIR" mkdir -p "$DIR" || die "could not create $DIR"
-	# Copied beside the old one and renamed over it: nobody ever runs half a
-	# binary, and a server already running keeps the file it started from.
-	# shellcheck disable=SC2016 # $1..$3 are the inner shell's arguments
-	if ! maybe_root "$DIR" sh -c 'cp "$1" "$2/.intergate.$3" && mv -f "$2/.intergate.$3" "$2/intergate"' \
-		sh "$new" "$DIR" "$$"; then
-		maybe_root "$DIR" rm -f "$DIR/.intergate.$$"
-		die "could not write $BIN"
-	fi
+	put_binary "$new" intergate
 
 	if [ -z "$current" ]; then
 		say "Installed intergate $version at $BIN."
@@ -453,6 +480,84 @@ uninstall_intergate() {
 	fi
 }
 
+# intergate-tunnel: the client alone, for a machine that keeps tunnels open
+# to a gate. Its wizard sets up the tunnels and the service.
+client_active() { need systemctl && [ -f "$CLIENT_UNIT" ] && systemctl is-active --quiet intergate-tunnel 2>/dev/null; }
+
+install_client() {
+	need curl || need wget || die "curl or wget is needed to download intergate-tunnel"
+	need tar || die "tar is needed to unpack intergate-tunnel"
+	detect_target
+	resolve_release
+	current=""
+	if [ -x "$CBIN" ]; then current=$(version_of "$CBIN"); fi
+	if [ -n "$current" ] && [ "v$current" = "$TAG" ]; then
+		say "intergate-tunnel $current is already installed at $CBIN."
+	else
+		fetch_release intergate-tunnel
+		if [ -n "$current" ] && [ "$current" = "$NEW_VERSION" ]; then
+			say "intergate-tunnel $current is already installed at $CBIN."
+		else
+			put_binary "$NEW" intergate-tunnel
+			if [ -z "$current" ]; then
+				say "Installed intergate-tunnel $NEW_VERSION at $CBIN."
+			else
+				say "Updated intergate-tunnel from $current to $NEW_VERSION at $CBIN."
+				if client_active; then
+					as_root systemctl restart intergate-tunnel
+					say "The intergate-tunnel service runs $NEW_VERSION now."
+				fi
+			fi
+		fi
+	fi
+	if has_tty; then
+		say ""
+		as_root "$CBIN" setup </dev/tty >/dev/tty
+	else
+		say ""
+		say "Next, set up this machine's tunnels:"
+		say "  sudo intergate-tunnel setup"
+		say "or, for one: sudo intergate-tunnel add web1.gate.example.com --http 8080"
+	fi
+}
+
+uninstall_client() {
+	if [ -f "$CLIENT_UNIT" ]; then
+		if [ -x "$CBIN" ]; then
+			as_root "$CBIN" uninstall
+		else
+			as_root systemctl disable --now intergate-tunnel || true
+			as_root rm -f "$CLIENT_UNIT"
+			as_root systemctl daemon-reload || true
+		fi
+	fi
+	if [ -e "$CBIN" ] || [ -L "$CBIN" ]; then
+		maybe_root "$DIR" rm -f "$CBIN" || die "could not remove $CBIN"
+		say "Removed $CBIN."
+	else
+		say "intergate-tunnel is not installed in $DIR."
+	fi
+	if [ "$PURGE" = 0 ]; then
+		if [ -d "$CLIENT_CONFIG_DIR" ]; then
+			say "Kept its tunnels and this machine's key: $CLIENT_CONFIG_DIR"
+			say "To delete them as well: curl -fsSL $SETUP_URL | sh -s -- uninstall-client --purge"
+		fi
+		return
+	fi
+	say "--purge deletes this machine's tunnels and its key: $CLIENT_CONFIG_DIR"
+	if ! confirm "Delete them?"; then
+		say "Nothing deleted."
+		return
+	fi
+	if [ -d "$CLIENT_CONFIG_DIR" ]; then
+		as_root rm -rf "$CLIENT_CONFIG_DIR" || die "could not delete $CLIENT_CONFIG_DIR"
+		say "Deleted $CLIENT_CONFIG_DIR."
+	fi
+	if id intergate-tunnel >/dev/null 2>&1 && need userdel; then
+		as_root userdel intergate-tunnel 2>/dev/null && say "Deleted the intergate-tunnel user."
+	fi
+}
+
 # No command was typed: ask what to do, offering the other options only when
 # intergate is installed. The answer becomes COMMAND.
 choose_command() {
@@ -488,11 +593,24 @@ choose_command() {
 			option setup-url "New link to the dashboard's setup: email delivery and the owner"
 		fi
 		option uninstall "Uninstall — keeps the configuration and data"
-	else
-		say "intergate opens a gate from your machine to the web: an encrypted"
-		say "SSH tunnel per subdomain, managed from a web dashboard."
+	fi
+	ccurrent=""
+	if [ -x "$CBIN" ]; then ccurrent=$(version_of "$CBIN"); fi
+	if [ -z "$current" ]; then
+		if [ -n "$ccurrent" ]; then
+			say "intergate-tunnel $ccurrent is installed at $CBIN."
+		else
+			say "intergate opens a gate from your machine to the web: an encrypted"
+			say "SSH tunnel per subdomain, managed from a web dashboard."
+		fi
 		say ""
-		option install "Install the latest release"
+		option install "Install the server: a gate for your domain"
+	fi
+	if [ -n "$ccurrent" ]; then
+		option client "Set up this machine's tunnels (and update intergate-tunnel)"
+		option uninstall-client "Uninstall intergate-tunnel — keeps its tunnels and key"
+	else
+		option client "Connect this machine to a gate: keep its tunnels open (intergate-tunnel)"
 	fi
 	option quit "Quit"
 	while :; do
@@ -526,7 +644,7 @@ main() {
 	YES=0
 	while [ $# -gt 0 ]; do
 		case "$1" in
-		install | reinstall | configure | uninstall | setup-url)
+		install | reinstall | configure | uninstall | setup-url | client | uninstall-client)
 			COMMAND=$1
 			EXPLICIT=1
 			;;
@@ -564,8 +682,8 @@ main() {
 		shift
 	done
 
-	if [ "$PURGE" = 1 ] && [ "$COMMAND" != uninstall ]; then
-		die "--purge goes with uninstall"
+	if [ "$PURGE" = 1 ] && [ "$COMMAND" != uninstall ] && [ "$COMMAND" != uninstall-client ]; then
+		die "--purge goes with uninstall or uninstall-client"
 	fi
 	[ -n "$DIR" ] || DIR=/usr/local/bin
 	# A `--dir=~/bin` reaches here unexpanded: the shell expands a tilde after
@@ -579,6 +697,7 @@ main() {
 	esac
 	DIR=${DIR%/}
 	BIN="$DIR/intergate"
+	CBIN="$DIR/intergate-tunnel"
 	case "$CONFIG" in
 	/*) ;;
 	*) CONFIG="$(pwd)/$CONFIG" ;;
@@ -595,6 +714,8 @@ main() {
 	configure) configure_intergate ;;
 	setup-url) setup_url ;;
 	uninstall) uninstall_intergate ;;
+	client) install_client ;;
+	uninstall-client) uninstall_client ;;
 	esac
 }
 

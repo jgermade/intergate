@@ -151,6 +151,10 @@ asking for a number. `intergate-tunnel ports HOST` lists them,
 NAME…] [--delete]` stops forwarding them, and with `--delete` frees them on the
 gate. Ports created this way show who made them in the dashboard.
 
+The dashboard's `tunnel.sh` does it all in one line with `--install`:
+`curl -fsSL https://gate.example.com/tunnel.sh | sh -s -- web1 --http 8080
+--install` (add `--user` for a service of your own, without sudo).
+
 What the machine forwards is in `/etc/intergate-tunnel/tunnels.yaml` (readable
 by root and the service's own user only, like the key); `--user` uses
 `~/.config/intergate-tunnel` and a systemd user service instead. `add` and
@@ -208,6 +212,14 @@ curl -fsSL https://jgermade.github.io/intergate/setup.sh | sh -s -- setup-url
 curl -fsSL https://jgermade.github.io/intergate/setup.sh | sh -s -- uninstall --purge
 ```
 
+On a machine that only opens tunnels to a gate, `client` installs
+[intergate-tunnel](#keeping-tunnels-open-intergate-tunnel) instead and opens
+its wizard (`uninstall-client` removes it):
+
+```sh
+curl -fsSL https://jgermade.github.io/intergate/setup.sh | sh -s -- client
+```
+
 Every release archive, the Docker image and the Helm chart also carry a
 build provenance attestation signed by GitHub: it proves they were built by
 this repository's release workflow, from the tagged commit. With the
@@ -224,7 +236,7 @@ gh attestation verify oci://ghcr.io/jgermade/intergate:latest --repo jgermade/in
 | `--version TAG` | A release such as `v0.2.0`. Default the latest, or `INTERGATE_VERSION`. |
 | `--config FILE` | Default `/etc/intergate/intergate.yaml`. |
 | `--no-service` | Neither install nor restart the systemd service. |
-| `--purge` | With `uninstall`: also delete the configuration, data and service user. |
+| `--purge` | With `uninstall`: also delete the configuration, data and service user. With `uninstall-client`: intergate-tunnel's tunnels, key and user. |
 | `-y`, `--yes` | Do not ask; `--purge` needs it when there is no terminal. |
 | `INTERGATE_DOWNLOAD_URL` | A directory with `intergate-<os>-<arch>.tar.gz` and `SHA256SUMS`, used instead of GitHub. |
 
