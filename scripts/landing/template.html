@@ -334,9 +334,9 @@ h2 { font-size: clamp(26px, 6vw, 40px); letter-spacing: -.025em; margin: 8px 0 6
 .win-tabs label:hover { color: var(--code-fg); }
 .win-tabs .narrow { display: none; }
 .win-tabs [for="k-file"], .win-tabs .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-weight: 500; }
-#k-default:checked ~ .tbar [for="k-default"], #k-file:checked ~ .tbar [for="k-file"] {
+#k-default:checked ~ .tbar [for="k-default"], #k-file:checked ~ .tbar [for="k-file"], #k-svc:checked ~ .tbar [for="k-svc"] {
   color: var(--code-fg); border-bottom-color: var(--cyan); }
-#k-default:focus-visible ~ .tbar [for="k-default"], #k-file:focus-visible ~ .tbar [for="k-file"] { outline: 2px solid var(--cyan); outline-offset: -2px; }
+#k-default:focus-visible ~ .tbar [for="k-default"], #k-file:focus-visible ~ .tbar [for="k-file"], #k-svc:focus-visible ~ .tbar [for="k-svc"] { outline: 2px solid var(--cyan); outline-offset: -2px; }
 .term .tfoot { margin: 0; padding: 10px 18px; background: color-mix(in srgb, var(--note), var(--code-bg));
   border-top: 1px solid color-mix(in srgb, var(--note), var(--code-border)); color: var(--code-dim); font-size: 13px; line-height: 1.5; }
 .term .tfoot code { color: var(--code-fg); font-size: 12px; }
@@ -344,6 +344,10 @@ h2 { font-size: clamp(26px, 6vw, 40px); letter-spacing: -.025em; margin: 8px 0 6
 #k-file:checked ~ .tfoot.k-file { display: block; }
 #k-file:checked ~ .tbar .copy.k-file { display: inline-flex; }
 #k-file:checked ~ pre.k-file { display: block; }
+.term .copy.k-svc, .term pre.k-svc, .term .tfoot.k-svc, #k-svc:checked ~ .tbar .copy.k-default, #k-svc:checked ~ .k-default { display: none; }
+#k-svc:checked ~ .tfoot.k-svc { display: block; }
+#k-svc:checked ~ .tbar .copy.k-svc { display: inline-flex; }
+#k-svc:checked ~ pre.k-svc { display: block; }
 @media (max-width: 479px) {
   .term .tbar { gap: 6px; padding: 12px 10px; }
   .term .tbar i { width: 10px; height: 10px; }
@@ -651,12 +655,17 @@ footer a.gh svg { width: 16px; height: 16px; fill: currentColor; }
       <div class="term">
         <input type="radio" name="key" id="k-default" checked>
         <input type="radio" name="key" id="k-file">
+        <input type="radio" name="key" id="k-svc">
         <div class="tbar"><i></i><i></i><i></i>
           <div class="win-tabs" role="tablist" aria-label="Which key ssh uses">
             <label for="k-default">Default<span class="wide">&nbsp;key</span></label>
             <label for="k-file">-i ~/.ssh/intergate</label>
+            <label for="k-svc">As a service</label>
           </div>
           <button class="copy k-default" type="button" data-copy="ssh -p 2222 -R myapp:80:localhost:3000 gate.example.com" aria-label="Copy the ssh command">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg><span>Copy</span>
+          </button>
+          <button class="copy k-svc" type="button" data-copy="sudo intergate-tunnel add myapp.gate.example.com --http 3000" aria-label="Copy the intergate-tunnel command">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg><span>Copy</span>
           </button>
           <button class="copy k-file" type="button" data-copy="ssh -i ~/.ssh/intergate -p 2222 -R myapp:80:localhost:3000 gate.example.com" aria-label="Copy the ssh command">
@@ -665,8 +674,10 @@ footer a.gh svg { width: 16px; height: 16px; fill: currentColor; }
         </div>
 <pre class="k-default" role="img" aria-label="A terminal: ssh -p 2222 -R myapp:80:localhost:3000 gate.example.com connects, intergate answers that https://myapp.gate.example.com is forwarding, and requests are logged as they arrive."><span class="l"><span class="ps">~ $ </span><span class="typed" style="--n:55">ssh -p 2222 -R myapp:80:localhost:3000 gate.example.com</span><span class="caret"></span></span><span class="l o o1"><span class="d">intergate: connected with key SHA256:9fQx…kLm2</span></span><span class="l o o2"><span class="g"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span> <span class="k">https://myapp.gate.example.com</span> is now forwarding</span><span class="l o o3"><span class="d">  access: private — manage it at https://gate.example.com</span></span><span class="l o o4"><span class="d">12:04:31</span>  <span class="g">200</span>  GET    /             <span class="d">(4ms)</span></span><span class="l o o5"><span class="d">12:04:31</span>  <span class="g">200</span>  GET    /app.js       <span class="d">(2ms)</span></span><span class="l o o6"><span class="d">12:04:33</span>  <span class="g">101</span>  GET    /live         <span class="d">(websocket)</span></span></pre>
 <pre class="k-file" role="img" aria-label="A terminal: ssh -i ~/.ssh/intergate -p 2222 -R myapp:80:localhost:3000 gate.example.com connects, intergate answers that https://myapp.gate.example.com is forwarding, and requests are logged as they arrive."><span class="l"><span class="ps">~ $ </span><span class="typed" style="--n:74">ssh -i ~/.ssh/intergate -p 2222 -R myapp:80:localhost:3000 gate.example.com</span><span class="caret"></span></span><span class="l o o1"><span class="d">intergate: connected with key SHA256:9fQx…kLm2</span></span><span class="l o o2"><span class="g"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span> <span class="k">https://myapp.gate.example.com</span> is now forwarding</span><span class="l o o3"><span class="d">  access: private — manage it at https://gate.example.com</span></span><span class="l o o4"><span class="d">12:04:31</span>  <span class="g">200</span>  GET    /             <span class="d">(4ms)</span></span><span class="l o o5"><span class="d">12:04:31</span>  <span class="g">200</span>  GET    /app.js       <span class="d">(2ms)</span></span><span class="l o o6"><span class="d">12:04:33</span>  <span class="g">101</span>  GET    /live         <span class="d">(websocket)</span></span></pre>
+<pre class="k-svc" role="img" aria-label="A terminal: sudo intergate-tunnel add myapp.gate.example.com --http 3000 finds the gate from its dashboard and saves the tunnel; sudo intergate-tunnel install runs it as a service, which keeps myapp.gate.example.com connected."><span class="l"><span class="ps">~ $ </span><span class="typed" style="--n:60">sudo intergate-tunnel add myapp.gate.example.com --http 3000</span><span class="caret"></span></span><span class="l o o1"><span class="d">Gate gate.example.com: SSH gate.example.com:2222, host key SHA256:9fQx…kLm2</span></span><span class="l o o2"><span class="d">  http → localhost:3000</span></span><span class="l o o3"><span class="ps">~ $ </span>sudo intergate-tunnel install</span><span class="l o o4"><span class="d">→ enable and start intergate-tunnel</span></span><span class="l o o5"><span class="g"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span> intergate-tunnel runs as a service</span><span class="l o o6"><span class="k">myapp.gate.example.com</span>  <span class="g">●</span> connected, and again after every reboot</span></pre>
         <p class="tfoot k-default">ssh offers the keys in <code>~/.ssh</code> (<code>id_ed25519</code>, <code>id_ecdsa</code>, <code>id_rsa</code>…) and those in your agent: nothing to add when one of them is on the subdomain.</p>
         <p class="tfoot k-file">For a key kept elsewhere, such as one made just for intergate with <code>ssh-keygen -t ed25519 -f ~/.ssh/intergate</code>. With many keys in your agent, add <code>-o IdentitiesOnly=yes</code>.</p>
+        <p class="tfoot k-svc">intergate-tunnel, the client alone, keeps this machine’s tunnels open, after reboots too: subdomains of one gate or several, their sites and ports, with a key of its own. Get it with <code>curl -fsSL https://jgermade.github.io/intergate/setup.sh | sh -s -- client</code>, or add <code>--install</code> to your dashboard’s <code>tunnel.sh</code> line.</p>
       </div>
     </div>
   </section>
@@ -734,7 +745,7 @@ footer a.gh svg { width: 16px; height: 16px; fill: currentColor; }
             <rect x="8" y="18" width="14" height="28" rx="4"/><rect x="44" y="18" width="14" height="28" rx="4"/>
             <g class="dgram"><rect class="filla" x="22" y="24" width="8" height="5" rx="1.5"/><rect class="fillc" x="22" y="31" width="8" height="5" rx="1.5"/><rect class="filla" x="22" y="38" width="8" height="5" rx="1.5"/></g>
           </svg></span>
-          <div><h3>UDP too</h3><p>Minecraft Bedrock, WireGuard, DNS… through the intergate client, run with one <code>curl</code> line.</p></div>
+          <div><h3>UDP too</h3><p>Minecraft Bedrock, WireGuard, DNS… through the intergate client, run with one <code>curl</code> line or kept open as a service.</p></div>
         </div>
         <div class="card">
           <span class="tile t-cyan"><svg class="ic" viewBox="0 0 64 64" aria-hidden="true">
