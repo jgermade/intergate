@@ -201,6 +201,7 @@
           <td>
             <strong>{{ port.name }}</strong>
             <div class="muted small"><span class="proto">{{ port.protocol }}</span> {{ presetOf(port.preset).id && !presetOf(port.preset).label.startsWith("Custom") ? presetOf(port.preset).label.replace(" (UDP)", "") + " · " : "" }}localhost:{{ port.local_port }}</div>
+            <div :if="port.created_by" class="muted small hide-narrow">added by {{ port.created_by }}</div>
           </td>
           <td class="keep">
             <span class="address">

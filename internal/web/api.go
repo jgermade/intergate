@@ -201,16 +201,8 @@ type portQuota struct {
 
 // portQuota is how many ports d's owner has and may have.
 func (s *Server) portQuota(ctx context.Context, d *store.Subdomain) (portQuota, error) {
-	owner, err := s.store.UserByID(ctx, d.UserID)
-	if err != nil {
-		return portQuota{}, err
-	}
-	used, err := s.store.CountPortsByUser(ctx, owner.ID)
-	if err != nil {
-		return portQuota{}, err
-	}
-	l := s.manage.Limits(owner)
-	return portQuota{Used: used, Max: l.Ports, Ranges: config.FormatPortRanges(l.Ranges)}, nil
+	used, l, err := s.manage.PortQuota(ctx, d)
+	return portQuota{Used: used, Max: l.Ports, Ranges: config.FormatPortRanges(l.Ranges)}, err
 }
 
 func (s *Server) handleUpdateSubdomain(w http.ResponseWriter, r *http.Request) {

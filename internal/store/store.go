@@ -152,6 +152,9 @@ var migrations = []string{
 	`ALTER TABLE users ADD COLUMN max_subdomains INTEGER;
 	ALTER TABLE users ADD COLUMN max_ports INTEGER;
 	ALTER TABLE users ADD COLUMN port_ranges TEXT NOT NULL DEFAULT '';`,
+	// Who created a port: a user's email from the dashboard, or a key
+	// from the intergate client.
+	`ALTER TABLE tcp_ports ADD COLUMN created_by TEXT NOT NULL DEFAULT '';`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {

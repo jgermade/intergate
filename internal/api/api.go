@@ -52,6 +52,7 @@ type Port struct {
 	Allow     []string       `json:"allow"`
 	Preset    string         `json:"preset"`
 	LocalPort int            `json:"local_port"`
+	CreatedBy string         `json:"created_by"`
 	CreatedAt time.Time      `json:"created_at"`
 	Forward   *ports.Stats   `json:"forward,omitempty"`
 }
@@ -64,7 +65,7 @@ func NewPort(cfg *config.Config, p *store.Port, f *ports.Stats) Port {
 	}
 	return Port{
 		ID: p.ID, Name: p.Name, Protocol: p.Protocol, Port: p.Port, Address: cfg.PortAddress(string(p.Protocol), p.Port),
-		Allow: allow, Preset: p.Preset, LocalPort: p.LocalPort, CreatedAt: p.CreatedAt, Forward: f,
+		Allow: allow, Preset: p.Preset, LocalPort: p.LocalPort, CreatedBy: p.CreatedBy, CreatedAt: p.CreatedAt, Forward: f,
 	}
 }
 

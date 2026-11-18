@@ -109,6 +109,7 @@ func (s *Service) CreatePort(ctx context.Context, d *store.Subdomain, in PortInp
 	p := &store.Port{
 		SubdomainID: d.ID, Subdomain: d.Name, OwnerID: d.UserID,
 		Name: in.Name, Protocol: in.Protocol, Allow: in.Allow, Preset: in.Preset, LocalPort: in.LocalPort, Port: in.Port,
+		CreatedBy: actor,
 	}
 	switch err := s.store.CreatePort(ctx, p, spans(limits.Ranges)); {
 	case errors.Is(err, store.ErrConflict):

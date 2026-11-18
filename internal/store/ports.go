@@ -34,18 +34,21 @@ type Port struct {
 	// and build the command that connects it.
 	Preset    string
 	LocalPort int
+	// CreatedBy is who created it: an email from the dashboard, or
+	// "key <name>" from the intergate client.
+	CreatedBy string
 	CreatedAt time.Time
 }
 
 const portQuery = `
-	SELECT p.id, p.subdomain_id, d.name, d.user_id, p.name, p.protocol, p.port, p.allow, p.preset, p.local_port, p.created_at
+	SELECT p.id, p.subdomain_id, d.name, d.user_id, p.name, p.protocol, p.port, p.allow, p.preset, p.local_port, p.created_by, p.created_at
 	FROM tcp_ports p JOIN subdomains d ON d.id = p.subdomain_id `
 
 func scanPort(row scanner) (*Port, error) {
 	var p Port
 	var allow string
 	var created int64
-	if err := row.Scan(&p.ID, &p.SubdomainID, &p.Subdomain, &p.OwnerID, &p.Name, &p.Protocol, &p.Port, &allow, &p.Preset, &p.LocalPort, &created); err != nil {
+	if err := row.Scan(&p.ID, &p.SubdomainID, &p.Subdomain, &p.OwnerID, &p.Name, &p.Protocol, &p.Port, &allow, &p.Preset, &p.LocalPort, &p.CreatedBy, &created); err != nil {
 		return nil, notFound(err)
 	}
 	p.Allow = strings.Fields(allow)
@@ -67,9 +70,9 @@ func (s *Store) CreatePort(ctx context.Context, p *Port, spans []Span) error {
 	}
 	insert := func(port int) error {
 		err := s.db.QueryRowContext(ctx, `
-			INSERT INTO tcp_ports (subdomain_id, name, protocol, port, allow, preset, local_port, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-			p.SubdomainID, p.Name, p.Protocol, port, strings.Join(p.Allow, " "), p.Preset, p.LocalPort, unix(p.CreatedAt)).Scan(&p.ID)
+			INSERT INTO tcp_ports (subdomain_id, name, protocol, port, allow, preset, local_port, created_by, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+			p.SubdomainID, p.Name, p.Protocol, port, strings.Join(p.Allow, " "), p.Preset, p.LocalPort, p.CreatedBy, unix(p.CreatedAt)).Scan(&p.ID)
 		switch {
 		case isUniqueViolation(err) && strings.Contains(err.Error(), "tcp_ports.port"):
 			return ErrTaken

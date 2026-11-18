@@ -127,6 +127,7 @@ func New(cfg *config.Config, log *slog.Logger, opts Options) (*Server, error) {
 		s.manage.SubdomainCreated = s.warmCertificate
 	}
 	s.ssh = sshd.New(cfg, s.store, s.registry, s.ports, s.hostKey, log.With("component", "ssh"))
+	s.ssh.Manage = s.manage
 	s.web, err = web.New(web.Options{
 		Config:     cfg,
 		Store:      s.store,

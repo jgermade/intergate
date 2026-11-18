@@ -122,3 +122,14 @@ func inRanges(ranges []config.PortRange, port int) bool {
 	}
 	return false
 }
+
+// PortQuota is how many ports d's owner has, across their subdomains, and
+// their limits.
+func (s *Service) PortQuota(ctx context.Context, d *store.Subdomain) (used int, l Limits, err error) {
+	owner, err := s.store.UserByID(ctx, d.UserID)
+	if err != nil {
+		return 0, Limits{}, err
+	}
+	used, err = s.store.CountPortsByUser(ctx, owner.ID)
+	return used, s.Limits(owner), err
+}
