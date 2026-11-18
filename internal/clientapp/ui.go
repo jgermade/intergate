@@ -6,12 +6,19 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"embed"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"html/template"
+	"io/fs"
 	"net"
 	"net/http"
+	"path"
+	"strconv"
+	"strings"
 	"time"
+
+	dashui "github.com/jgermade/intergate/internal/web/ui"
 )
 
 //go:embed ui
@@ -88,20 +95,28 @@ func (u *UI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.Method + " " + r.URL.Path {
 	case "GET /":
 		http.SetCookie(w, &http.Cookie{Name: "t", Value: u.token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
+		// As the dashboard's: jq79 builds each component's code as scripts
+		// carrying this nonce, so the page never needs eval or inline code.
+		n := make([]byte, 18)
+		rand.Read(n)
+		nonce := base64.RawURLEncoding.EncodeToString(n)
 		var buf bytes.Buffer
-		page.Execute(&buf, struct{ Token string }{u.token})
+		page.Execute(&buf, struct{ Token, Nonce string }{u.token, nonce})
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self' 'nonce-"+nonce+"'; style-src 'self'; "+
+			"img-src 'self' data:; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'")
 		w.Write(buf.Bytes())
-	case "GET /logo.svg":
-		b, _ := uiFiles.ReadFile("ui/logo.svg")
-		w.Header().Set("Content-Type", "image/svg+xml")
-		w.Write(b)
 	case "GET /api/state":
-		// With ?wait, answer at the next change (or after 25s).
+		// With ?wait=REV, answer at the first change after REV (at once if
+		// there was one already), or after 25s. A bare ?wait waits for the
+		// next one.
 		if r.URL.Query().Has("wait") {
+			changed := u.app.Changed()
+			if rev, err := strconv.ParseUint(r.URL.Query().Get("wait"), 10, 64); err == nil {
+				changed = u.app.ChangedSince(rev)
+			}
 			select {
-			case <-u.app.Changed():
+			case <-changed:
 			case <-time.After(25 * time.Second):
 			case <-r.Context().Done():
 				return
@@ -159,8 +174,32 @@ func (u *UI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	default:
+		if r.Method == http.MethodGet && serveFile(w, r) {
+			return
+		}
 		http.NotFound(w, r)
 	}
+}
+
+// serveFile serves the dashboard's design system under /ui/ and the
+// window's own files under /app/.
+func serveFile(w http.ResponseWriter, r *http.Request) bool {
+	var fsys fs.FS
+	var name string
+	switch {
+	case strings.HasPrefix(r.URL.Path, "/ui/"):
+		fsys, name = dashui.FS, strings.TrimPrefix(r.URL.Path, "/ui/")
+	case strings.HasPrefix(r.URL.Path, "/app/"):
+		fsys, name = uiFiles, "ui/"+strings.TrimPrefix(r.URL.Path, "/app/")
+	default:
+		return false
+	}
+	b, err := fs.ReadFile(fsys, name)
+	if err != nil || name == "ui/index.html" {
+		return false
+	}
+	http.ServeContent(w, r, path.Base(name), time.Time{}, bytes.NewReader(b))
+	return true
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

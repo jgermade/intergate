@@ -1,0 +1,283 @@
+<script :setup>
+  // The desktop app's window: where it connects (a dashboard, a subdomain,
+  // a key), what it forwards and how each forward fares, its options and
+  // its log. Drawn with the dashboard's theme and components, from
+  // internal/web/ui; the app's API is in ui.go.
+  const [Alert, Badge, Button, Card, Facts, Icon, Select, Switch] = await C79.importAll([
+    "@theme/components/alert.html",
+    "@theme/components/badge.html",
+    "@theme/components/button.html",
+    "@theme/components/card.html",
+    "@theme/components/facts.html",
+    "@theme/components/icon.html",
+    "@theme/components/select.html",
+    "@theme/components/switch.html",
+  ])
+
+  const TOKEN = JSON.parse(document.getElementById("boot").textContent).token
+  const api = async (method, path, body) => {
+    const r = await fetch(path, {
+      method,
+      headers: { "X-Token": TOKEN, "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+    const data = await r.json().catch(() => null)
+    if (!r.ok) throw new Error((data && data.error) || "Something went wrong")
+    return data
+  }
+
+  const windows = /Windows/.test(navigator.userAgent)
+  const KINDS = [
+    { value: "http", label: "HTTP", icon: "globe" },
+    { value: "tcp", label: "TCP", icon: "server" },
+    { value: "udp", label: "UDP", icon: "traffic" },
+  ]
+
+  // What the app reports, and the settings as edited here: fields being
+  // typed in keep their value when a report comes.
+  let state = null
+  let settings = { dashboard: "", subdomain: "", key_file: "", forwards: [], connect_on_start: false }
+  let error = ""
+  let saved = false
+  let busy = false
+  let editing = false
+
+  const apply = (s, take) => {
+    state = s
+    if (take || !editing) settings = structuredClone(s.settings)
+    if (!settings.forwards) settings.forwards = []
+    if (s.status === "failed" || s.status === "waiting") error = s.error || ""
+    else if (s.status === "connected") error = ""
+  }
+
+  // Settings are saved a moment after each change.
+  let saveTimer = null
+  const save = () => {
+    clearTimeout(saveTimer)
+    saveTimer = setTimeout(async () => {
+      try {
+        apply(await api("PUT", "/api/settings", settings), true)
+        saved = true
+        setTimeout(() => { saved = false }, 1400)
+      } catch (e) {
+        error = e.message
+      }
+    }, 400)
+  }
+  const set = (field, value) => {
+    settings = { ...settings, [field]: value }
+    save()
+  }
+
+  // Forwards, by their place in the list.
+  $: rows = settings.forwards.map((f, i) => ({ ...f, i, live: state && state.forwards ? state.forwards[i] : null }))
+  const setForward = (i, field, value) => {
+    const forwards = settings.forwards.map((f, j) => (j === i ? { ...f, [field]: value } : f))
+    if (field === "kind" && value === "http") forwards[i].name = ""
+    settings = { ...settings, forwards }
+    save()
+  }
+  const addForward = kind => {
+    settings = { ...settings, forwards: [...settings.forwards, { kind, name: "", local: "" }] }
+    save()
+  }
+  const removeForward = i => {
+    settings = { ...settings, forwards: settings.forwards.filter((_, j) => j !== i) }
+    save()
+  }
+  const hasHTTP = () => settings.forwards.some(f => f.kind === "http")
+
+  $: running = !!state && ["connecting", "connected", "waiting"].includes(state.status)
+  $: tone = !state ? "neutral" : { connected: "ok", connecting: "warn", waiting: "warn", failed: "bad" }[state.status] || "neutral"
+  $: found = state && state.settings.server
+    ? [
+        { label: "SSH", value: state.settings.server, icon: "server", hue: "blue" },
+        { label: "Host key", value: state.settings.host_key, icon: "key", hue: "purple" },
+      ]
+    : []
+  $: domain = state && state.settings.domain ? state.settings.domain : "your intergate"
+  $: log = state ? (state.log || []).join("\n") : ""
+
+  const forwardTone = live => (!live ? "neutral" : live.state === "open" ? "ok" : live.state === "refused" ? "bad" : "warn")
+  const forwardText = live => (!live ? "idle" : live.state === "open" ? "online" : live.state === "refused" ? "refused" : "waiting")
+
+  const toggle = async () => {
+    error = ""
+    busy = true
+    try {
+      clearTimeout(saveTimer)
+      if (running) apply(await api("POST", "/api/disconnect"))
+      else {
+        await api("PUT", "/api/settings", settings)
+        apply(await api("POST", "/api/connect"))
+      }
+    } catch (e) {
+      error = e.message
+    }
+    busy = false
+  }
+
+  let looking = false
+  const lookUp = async () => {
+    error = ""
+    looking = true
+    try {
+      apply(await api("POST", "/api/discover", { dashboard: settings.dashboard }), true)
+    } catch (e) {
+      error = e.message
+    }
+    looking = false
+  }
+
+  const setAutostart = async on => {
+    try {
+      apply(await api("PUT", "/api/autostart", { on }))
+    } catch (e) {
+      error = e.message
+    }
+  }
+
+  let copied = ""
+  const copy = async address => {
+    try {
+      await navigator.clipboard.writeText(address)
+      copied = address
+      setTimeout(() => { copied = "" }, 1600)
+    } catch {}
+  }
+
+  // Follow the app: each answer comes at its next change.
+  $attached(() => {
+    let stop = false
+    const follow = async () => {
+      while (!stop) {
+        try {
+          apply(await api("GET", "/api/state?wait=" + (state ? state.rev : 0)))
+        } catch {
+          await new Promise(r => setTimeout(r, 2000))
+        }
+      }
+    }
+    api("GET", "/api/state").then(s => { apply(s, true); follow() }).catch(e => { error = e.message })
+    const focus = () => { editing = true }
+    const blur = () => { editing = false }
+    document.addEventListener("focusin", focus)
+    document.addEventListener("focusout", blur)
+    const off = $detached(() => {
+      stop = true
+      document.removeEventListener("focusin", focus)
+      document.removeEventListener("focusout", blur)
+      off()
+    })
+  })
+</script>
+
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <span class="brand">
+      <img class="logo" src="/ui/logo-mark.svg" alt="">
+      <span class="brand-name">intergate</span>
+    </span>
+    <div class="bar-actions">
+      <Badge :tone="tone" dot :pulse="state && state.status === 'connected'">{{ state ? state.status : "…" }}</Badge>
+      <Button :variant="running ? 'secondary' : 'primary'" :icon="running ? 'close' : 'forward'" :disabled="busy || !state" @click="toggle">
+        {{ running ? "Disconnect" : "Connect" }}</Button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap window">
+  <Alert :if="error" tone="bad">{{ error }}</Alert>
+
+  <Card title="Your intergate">
+    <template :slot.aside><Badge :if="saved" tone="ok">Saved</Badge></template>
+    <div class="form">
+      <label>Dashboard
+        <span class="hint">Its address, as in your browser: gate.example.com</span>
+        <span class="form-row">
+          <input placeholder="gate.example.com" autocomplete="off" spellcheck="false" :value="settings.dashboard"
+                 @input="settings = { ...settings, dashboard: $event.target.value }" @keydown="$event.key === 'Enter' && lookUp()">
+          <Button variant="secondary" icon="globe" :disabled="looking || !settings.dashboard" @click="lookUp">Look up</Button>
+        </span>
+      </label>
+      <Facts :if="found.length" columns="2" :items="found" />
+      <div class="form-grid two">
+        <label>Subdomain
+          <span class="input-suffix">
+            <input placeholder="myapp" autocomplete="off" spellcheck="false" :value="settings.subdomain" @input="set('subdomain', $event.target.value)">
+            <span>.{{ domain }}</span>
+          </span>
+        </label>
+        <label>SSH key
+          <input :placeholder="windows ? 'C:\\Users\\me\\.ssh\\intergate' : '~/.ssh/intergate'" autocomplete="off" spellcheck="false"
+                 :value="settings.key_file" @input="set('key_file', $event.target.value)">
+          <span class="hint">Optional: your SSH agent's keys and ~/.ssh are tried first.</span>
+        </label>
+      </div>
+    </div>
+  </Card>
+
+  <Card title="Forwards">
+    <template :slot.aside><Badge>{{ rows.length }}</Badge></template>
+    <p class="muted intro">What reaches this machine through {{ settings.subdomain || "the subdomain" }}.{{ domain }}: its site, and ports by the name they have in the dashboard.</p>
+    <div :if="rows.length" class="table-wrap">
+      <table class="table tiles forwards">
+        <thead><tr><th>Type</th><th>Port</th><th>Local service</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          <tr :each="f in rows" :key="f.i">
+            <td class="kind"><Select :model="f.kind" :items="KINDS" :label="'Type of forward ' + (f.i + 1)" @change="setForward(f.i, 'kind', $event.detail)" /></td>
+            <td>
+              <input :if="f.kind !== 'http'" placeholder="db" autocomplete="off" spellcheck="false" aria-label="Port name"
+                     :value="f.name" @input="setForward(f.i, 'name', $event.target.value)">
+              <span :else class="muted small">the site</span>
+            </td>
+            <td class="local">
+              <input :placeholder="f.kind === 'http' ? '3000' : '5432'" autocomplete="off" spellcheck="false" aria-label="Local service"
+                     :value="f.local" @input="setForward(f.i, 'local', $event.target.value)">
+            </td>
+            <td class="status">
+              <Badge :tone="forwardTone(f.live)" dot :pulse="f.live && f.live.state === 'open'">{{ forwardText(f.live) }}</Badge>
+              <span :if="f.live && f.live.address" class="address">
+                <code>{{ f.live.address }}</code>
+                <Button variant="ghost" square :icon="copied === f.live.address ? 'check' : 'copy'" :title="copied === f.live.address ? 'Copied' : 'Copy'"
+                        :label="'Copy ' + f.live.address" @click="copy(f.live.address)" />
+              </span>
+            </td>
+            <td class="right"><Button variant="ghost-danger" square icon="trash" title="Remove" :label="'Remove forward ' + (f.i + 1)" @click="removeForward(f.i)" /></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p :else class="empty-inline">Nothing yet: add the site, or a port.</p>
+    <div class="actions">
+      <Button :if="!hasHTTP()" variant="secondary" size="sm" icon="plus" @click="addForward('http')">The site (HTTP)</Button>
+      <Button variant="secondary" size="sm" icon="plus" @click="addForward('tcp')">TCP port</Button>
+      <Button variant="secondary" size="sm" icon="plus" @click="addForward('udp')">UDP port</Button>
+    </div>
+    <p class="hint after">A port is created on the subdomain's page of the dashboard, then added here by its name. The local service is a port (3000) or host:port.</p>
+  </Card>
+
+  <Card title="Options">
+    <div class="options">
+      <div class="switch-row">
+        <Switch :on="!!(state && state.autostart)" :disabled="!state || !state.can_autostart" :label="windows ? 'Start intergate with Windows' : 'Start intergate when I sign in'"
+                @change="setAutostart($event.detail)" />
+        <div>
+          <strong>{{ windows ? "Start intergate with Windows" : "Start intergate when I sign in" }}</strong>
+          <div class="hint">In the tray, without opening this window.</div>
+        </div>
+      </div>
+      <div class="switch-row">
+        <Switch :on="!!settings.connect_on_start" label="Connect as soon as intergate starts" @change="set('connect_on_start', $event.detail)" />
+        <div>
+          <strong>Connect as soon as intergate starts</strong>
+          <div class="hint">With the settings above, and again if the connection drops.</div>
+        </div>
+      </div>
+    </div>
+  </Card>
+
+  <Card title="Log">
+    <pre class="log" :text="log || 'Nothing yet.'"></pre>
+  </Card>
+</main>

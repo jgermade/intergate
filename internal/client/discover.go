@@ -38,10 +38,15 @@ func DashboardURL(dashboard string) (*url.URL, error) {
 }
 
 // Discover asks an intergate dashboard where its SSH endpoint is and which
-// host key it has. hc is one that knows *.localhost when nil.
+// host key it has. Without a transport of its own, hc (or, when nil, a
+// client of this package) knows *.localhost.
 func Discover(ctx context.Context, dashboard string, hc *http.Client) (*GateInfo, error) {
 	if hc == nil {
 		hc = defaultHTTP
+	} else if hc.Transport == nil {
+		c := *hc
+		c.Transport = defaultHTTP.Transport
+		hc = &c
 	}
 	u, err := DashboardURL(dashboard)
 	if err != nil {

@@ -1,0 +1,34 @@
+/* The desktop app's window, on top of the dashboard's stylesheet
+   (/ui/app.css): only what the window has that the dashboard doesn't.
+   Every value is a token of the theme. */
+
+.bar-actions { display: flex; align-items: center; gap: var(--ig-space-5); }
+
+main.window { display: grid; gap: var(--ig-space-7); padding-top: var(--ig-space-7); padding-bottom: var(--ig-space-9); }
+main.window > [data-c79-box] > * { margin: 0; }
+.window .form { margin-top: 0; }
+.window .form-grid.two { grid-template-columns: 1fr; }
+.window .after { margin-top: var(--ig-space-5); }
+
+/* A forward per row: its fields as wide as the column. */
+.forwards input:not([type=radio]):not([type=checkbox]) { min-width: 6rem; }
+.forwards td.kind { width: 9.5rem; }
+.forwards td.kind .select { min-width: 8.75rem; }
+.forwards td.local { width: 9rem; }
+.forwards td.status { white-space: nowrap; }
+.forwards .address { margin-left: var(--ig-space-3); }
+.forwards .address code { font-size: var(--ig-text-sm); }
+
+.options { display: grid; gap: var(--ig-space-6); }
+
+/* The log, as a terminal. */
+pre.log {
+  margin: 0; max-height: 14rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+  font: var(--ig-text-sm)/1.6 var(--ig-font-mono);
+  padding: var(--ig-space-5) var(--ig-space-6); border-radius: var(--ig-radius-md);
+  background: var(--ig-term-bg); color: var(--ig-term-fg); border: var(--ig-hairline) solid var(--ig-term-line);
+}
+
+@media (min-width: 640px) {
+  .window .form-grid.two { grid-template-columns: 1fr 1fr; align-items: start; }
+}

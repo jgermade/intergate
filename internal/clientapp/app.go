@@ -101,6 +101,8 @@ type State struct {
 	// supported.
 	CanAutostart bool     `json:"can_autostart"`
 	Log          []string `json:"log"`
+	// Rev is the change this state is at, for ?wait=<rev>.
+	Rev uint64 `json:"rev"`
 }
 
 // App runs the client with the saved settings.
@@ -113,8 +115,10 @@ type App struct {
 	cancel   context.CancelFunc
 	done     chan struct{}
 	log      []string
-	// changed is closed and replaced on every change, for watchers.
+	// changed is closed and replaced on every change, for watchers, and
+	// rev counts the changes.
 	changed chan struct{}
+	rev     uint64
 
 	// run replaces client.Run, for tests.
 	run func(context.Context, client.Options) error
@@ -217,8 +221,22 @@ func (a *App) addLog(line string) {
 
 // notify wakes watchers; a.mu is held.
 func (a *App) notify() {
+	a.rev++
 	close(a.changed)
 	a.changed = make(chan struct{})
+}
+
+// ChangedSince returns a channel closed at the next change, or already
+// closed if there was one since rev.
+func (a *App) ChangedSince(rev uint64) <-chan struct{} {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if rev != a.rev {
+		ch := make(chan struct{})
+		close(ch)
+		return ch
+	}
+	return a.changed
 }
 
 // Changed returns a channel closed at the next change.
@@ -233,6 +251,7 @@ func (a *App) State() State {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	st := a.state
+	st.Rev = a.rev
 	st.Forwards = append([]ForwardState(nil), a.state.Forwards...)
 	st.Settings = a.settings
 	st.Log = append([]string(nil), a.log...)

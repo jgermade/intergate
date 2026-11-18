@@ -224,7 +224,7 @@ type uiFile struct {
 func loadUI() (map[string]uiFile, error) {
 	files := map[string]uiFile{}
 	err := fs.WalkDir(assets, "ui", func(name string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+		if err != nil || d.IsDir() || strings.HasSuffix(name, ".go") {
 			return err
 		}
 		data, err := assets.ReadFile(name)
