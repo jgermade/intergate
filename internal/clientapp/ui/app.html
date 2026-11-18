@@ -3,13 +3,14 @@
   // a key), what it forwards and how each forward fares, its options and
   // its log. Drawn with the dashboard's theme and components, from
   // internal/web/ui; the app's API is in ui.go.
-  const [Alert, Badge, Button, Card, Facts, Icon, Select, Switch] = await C79.importAll([
+  const [Alert, Badge, Button, Card, Facts, Icon, Modal, Select, Switch] = await C79.importAll([
     "@theme/components/alert.html",
     "@theme/components/badge.html",
     "@theme/components/button.html",
     "@theme/components/card.html",
     "@theme/components/facts.html",
     "@theme/components/icon.html",
+    "@theme/components/modal.html",
     "@theme/components/select.html",
     "@theme/components/switch.html",
   ])
@@ -48,6 +49,8 @@
     if (!settings.forwards) settings.forwards = []
     if (s.status === "failed" || s.status === "waiting") error = s.error || ""
     else if (s.status === "connected") error = ""
+    // After the functions below are defined: apply first runs from $attached.
+    setTimeout(maybeLoadPorts)
   }
 
   // Settings are saved a moment after each change.
@@ -144,6 +147,108 @@
       copied = address
       setTimeout(() => { copied = "" }, 1600)
     } catch {}
+  }
+
+  // The subdomain's ports on the gate, read and changed with the app's key.
+  let gate = null // { name, ports, quota }
+  let portsError = ""
+  let loadingPorts = false
+  let portsFor = ""
+  const loadPorts = async () => {
+    portsError = ""
+    loadingPorts = true
+    try {
+      gate = await api("GET", "/api/ports")
+      portsFor = (state ? state.settings.subdomain + "@" + state.settings.server : "")
+    } catch (e) {
+      gate = null
+      portsError = e.message
+    }
+    loadingPorts = false
+  }
+  // Once the gate and the subdomain are known, and again when they change.
+  const maybeLoadPorts = () => {
+    if (state && state.settings.server && state.settings.subdomain && !loadingPorts &&
+        portsFor !== state.settings.subdomain + "@" + state.settings.server) loadPorts()
+  }
+
+  const forwarded = name => settings.forwards.some(f => f.kind !== "http" && f.name === name)
+  const forwardPort = p => {
+    settings = { ...settings, forwards: [...settings.forwards, { kind: p.protocol, name: p.name, local: p.local_port ? String(p.local_port) : "" }] }
+    save()
+  }
+  const allowList = text => text.split(/[\s,]+/).filter(Boolean)
+  const describeAllow = allow => (allow.length ? allow.join(", ") : "anyone")
+
+  // A new port, in a dialog.
+  const PROTOCOLS = [
+    { value: "tcp", label: "TCP", icon: "server", hint: "Databases, SSH, most servers" },
+    { value: "udp", label: "UDP", icon: "traffic", hint: "Games, DNS, WireGuard" },
+  ]
+  let adding = false
+  let draft = { name: "", protocol: "tcp", local: "", port: "", allow: "" }
+  let draftError = ""
+  let creating = false
+  const startAdd = () => {
+    draft = { name: "", protocol: "tcp", local: "", port: "", allow: "" }
+    draftError = ""
+    adding = true
+  }
+  const createPort = async () => {
+    draftError = ""
+    const allow = allowList(draft.allow)
+    if (!allow.length) {
+      draftError = "Say who may connect: addresses or ranges, or any for anyone."
+      return
+    }
+    creating = true
+    try {
+      const p = await api("POST", "/api/ports", {
+        name: draft.name, protocol: draft.protocol, allow, port: Number(draft.port) || 0, local_port: Number(draft.local) || 0,
+      })
+      adding = false
+      settings = { ...settings, forwards: [...settings.forwards, { kind: p.protocol, name: p.name, local: draft.local }] }
+      save()
+      loadPorts()
+    } catch (e) {
+      draftError = e.message
+    }
+    creating = false
+  }
+
+  // Who may connect to a port, in a dialog.
+  let allowing = null
+  let allowText = ""
+  let allowError = ""
+  const startAllow = p => {
+    allowing = p
+    allowText = p.allow.length ? p.allow.join(" ") : "any"
+    allowError = ""
+  }
+  const saveAllow = async () => {
+    allowError = ""
+    try {
+      await api("PUT", "/api/ports/allow", { name: allowing.name, allow: allowList(allowText) })
+      allowing = null
+      loadPorts()
+    } catch (e) {
+      allowError = e.message
+    }
+  }
+
+  // Deleting one, after asking.
+  let deleting = null
+  const deletePort = async () => {
+    const p = deleting
+    deleting = null
+    try {
+      await api("POST", "/api/ports/delete", { name: p.name })
+      settings = { ...settings, forwards: settings.forwards.filter(f => f.kind === "http" || f.name !== p.name) }
+      save()
+      loadPorts()
+    } catch (e) {
+      portsError = e.message
+    }
   }
 
   // Follow the app: each answer comes at its next change.
@@ -254,8 +359,93 @@
       <Button variant="secondary" size="sm" icon="plus" @click="addForward('tcp')">TCP port</Button>
       <Button variant="secondary" size="sm" icon="plus" @click="addForward('udp')">UDP port</Button>
     </div>
-    <p class="hint after">A port is created on the subdomain's page of the dashboard, then added here by its name. The local service is a port (3000) or host:port.</p>
+    <p class="hint after">Ports are named as on the gate: see them below, or create one. The local service is a port (3000) or host:port.</p>
   </Card>
+
+  <Card title="Ports on the gate">
+    <template :slot.aside>
+      <Badge :if="gate" :title="'Ports its owner has, across their subdomains, of those they may have'">{{ gate.quota.used }} of {{ gate.quota.max }}</Badge>
+      <Button variant="secondary" size="sm" icon="forward" :disabled="loadingPorts" @click="loadPorts">Refresh</Button>
+    </template>
+    <Alert :if="portsError" tone="warn" flush>{{ portsError }}</Alert>
+    <p :elseif="!gate" class="empty-inline">{{ loadingPorts ? "Asking the gate…" : "Look up your intergate and enter the subdomain to see its ports." }}</p>
+    <div :elseif="gate.ports.length" class="table-wrap">
+      <table class="table tiles gate-ports">
+        <thead><tr><th>Name</th><th>Address</th><th>Open to</th><th></th></tr></thead>
+        <tbody>
+          <tr :each="p in gate.ports" :key="p.name">
+            <td><strong>{{ p.name }}</strong> <span class="proto">{{ p.protocol }}</span>
+              <div :if="p.created_by" class="muted small">added by {{ p.created_by }}</div></td>
+            <td><code>{{ p.address }}</code></td>
+            <td class="small"><span :if="p.allow.length">{{ describeAllow(p.allow) }}</span><span :else class="warn">anyone</span></td>
+            <td class="right"><div class="port-actions">
+              <Button :if="!forwarded(p.name)" variant="secondary" size="sm" icon="plus" @click="forwardPort(p)">Forward here</Button>
+              <Badge :else tone="ok">forwarded</Badge>
+              <Button variant="ghost" square icon="lock" title="Who may connect" :label="'Who may connect to ' + p.name" @click="startAllow(p)" />
+              <Button variant="ghost-danger" square icon="trash" title="Delete" :label="'Delete ' + p.name" @click="deleting = p" />
+            </div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p :else class="empty-inline">{{ gate.name }} has no ports yet.</p>
+    <div :if="gate" class="actions">
+      <Button variant="secondary" size="sm" icon="plus" :disabled="gate.quota.used >= gate.quota.max" @click="startAdd">New port</Button>
+      <span :if="gate.quota.used >= gate.quota.max" class="hint">Its owner has all the ports they may have: delete one, or ask an administrator.</span>
+    </div>
+  </Card>
+
+  <Modal :open="adding" size="md" :title="'New port on ' + (gate ? gate.name : '')" @close="adding = false">
+    <form id="new-port" class="form" @submit.prevent="createPort">
+      <Alert :if="draftError" tone="bad" flush>{{ draftError }}</Alert>
+      <label>Name
+        <input required maxlength="32" placeholder="db" autocomplete="off" spellcheck="false" :value="draft.name" @input="draft = { ...draft, name: $event.target.value }">
+        <span class="hint">Clients reach it as &lt;name&gt;.{{ gate ? gate.name : "" }}.</span>
+      </label>
+      <label>Protocol
+        <Select :model="draft.protocol" :items="PROTOCOLS" label="Protocol" @change="draft = { ...draft, protocol: $event.detail }" />
+      </label>
+      <div class="form-grid two">
+        <label>Local service
+          <input required placeholder="5432" autocomplete="off" spellcheck="false" :value="draft.local" @input="draft = { ...draft, local: $event.target.value }">
+        </label>
+        <label>Public port
+          <input inputmode="numeric" placeholder="any free one" autocomplete="off" :value="draft.port" @input="draft = { ...draft, port: $event.target.value }">
+        </label>
+      </div>
+      <p :if="gate" class="hint">Public ports come from {{ gate.quota.ranges }}, and stay the port's until it is deleted.</p>
+      <label>Who may connect
+        <input required placeholder="203.0.113.7 198.51.100.0/24, or any" autocomplete="off" spellcheck="false" :value="draft.allow" @input="draft = { ...draft, allow: $event.target.value }">
+        <span class="hint">Addresses or ranges; any lets the whole internet in.</span>
+      </label>
+    </form>
+    <template :slot.foot>
+      <Button variant="secondary" @click="adding = false">Cancel</Button>
+      <Button type="submit" form="new-port" :disabled="creating">Create and forward</Button>
+    </template>
+  </Modal>
+
+  <Modal :open="!!allowing" size="md" :title="'Who may connect to ' + (allowing ? allowing.name : '')" @close="allowing = null">
+    <form id="port-allow" class="form" @submit.prevent="saveAllow">
+      <Alert :if="allowError" tone="bad" flush>{{ allowError }}</Alert>
+      <label>Addresses or ranges
+        <input required autocomplete="off" spellcheck="false" :value="allowText" @input="allowText = $event.target.value">
+        <span class="hint">Separated by spaces; any for anyone. Connections already in keep going.</span>
+      </label>
+    </form>
+    <template :slot.foot>
+      <Button variant="secondary" @click="allowing = null">Cancel</Button>
+      <Button type="submit" form="port-allow">Save</Button>
+    </template>
+  </Modal>
+
+  <Modal :open="!!deleting" :title="'Delete ' + (deleting ? deleting.name : '') + '?'" @close="deleting = null">
+    <p class="muted">It closes at once, and its number ({{ deleting ? deleting.address : "" }}) goes back to the range: a new port may get another.</p>
+    <template :slot.foot>
+      <Button variant="secondary" @click="deleting = null">Cancel</Button>
+      <Button variant="danger" @click="deletePort">Delete</Button>
+    </template>
+  </Modal>
 
   <Card title="Options">
     <div class="options">

@@ -32,3 +32,8 @@ pre.log {
 @media (min-width: 640px) {
   .window .form-grid.two { grid-template-columns: 1fr 1fr; align-items: start; }
 }
+
+/* The subdomain's ports on the gate. */
+.gate-ports .port-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--ig-space-2); }
+.gate-ports td code { font-size: var(--ig-text-sm); }
+.window .actions .hint { margin: 0; }

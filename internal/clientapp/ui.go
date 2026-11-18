@@ -19,6 +19,7 @@ import (
 	"time"
 
 	dashui "github.com/jgermade/intergate/internal/web/ui"
+	"github.com/jgermade/intergate/internal/wire"
 )
 
 //go:embed ui
@@ -168,6 +169,50 @@ func (u *UI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		u.app.notify()
 		u.app.mu.Unlock()
 		writeJSON(w, u.app.State())
+	case "GET /api/ports":
+		sd, err := u.app.Ports()
+		if err != nil {
+			fail(w, err.Error())
+			return
+		}
+		writeJSON(w, sd)
+	case "POST /api/ports":
+		var in wire.PortAdd
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&in) != nil {
+			fail(w, "invalid port")
+			return
+		}
+		p, err := u.app.AddPort(in)
+		if err != nil {
+			fail(w, err.Error())
+			return
+		}
+		writeJSON(w, p)
+	case "PUT /api/ports/allow":
+		var req struct {
+			Name  string   `json:"name"`
+			Allow []string `json:"allow"`
+		}
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&req) != nil {
+			fail(w, "invalid request")
+			return
+		}
+		p, err := u.app.SetPortAllow(req.Name, req.Allow)
+		if err != nil {
+			fail(w, err.Error())
+			return
+		}
+		writeJSON(w, p)
+	case "POST /api/ports/delete":
+		var req struct {
+			Name string `json:"name"`
+		}
+		json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req)
+		if err := u.app.DeletePort(req.Name); err != nil {
+			fail(w, err.Error())
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	case "POST /api/show":
 		if u.Show != nil {
 			u.Show()

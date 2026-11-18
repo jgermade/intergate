@@ -171,7 +171,9 @@ as `intergate tunnel` does.
 The Windows release zips also hold `intergate-gui.exe`, the client with a
 window and a tray icon. Give it your dashboard's address and it looks up the
 SSH endpoint and host key (`/client.json`); then the subdomain, an optional
-key file, and what to forward (the HTTP tunnel and ports, by name). It shows
+key file, and what to forward (the HTTP tunnel and ports, by name; it lists
+the subdomain's ports on the gate, and creates, changes and deletes them with
+its key). It shows
 each forward's state and public address and a log, connects and disconnects
 from the tray, can start with Windows (minimized to the tray, from the
 user's `Run` key) and connect on start. Its settings live in
@@ -761,8 +763,6 @@ hero, regenerate the landing, then run `node scripts/landing/og.js`.
 
 ## Roadmap
 
-- The desktop app creating and changing a subdomain's ports, as
-  intergate-tunnel does.
 - User limits from `intergate config` too.
 - Sharing private subdomains with specific users.
 - Custom domains (CNAME to a subdomain).
