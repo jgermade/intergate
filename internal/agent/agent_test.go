@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/xml"
 	"os"
 	"path/filepath"
 	"strings"
@@ -107,5 +108,35 @@ func TestUnit(t *testing.T) {
 	usr, _ := up.unit("/home/a/bin/intergate-tunnel")
 	if strings.Contains(usr, "User=") || !strings.Contains(usr, "--status %t/intergate-tunnel/status.json") || !strings.Contains(usr, "WantedBy=default.target") {
 		t.Errorf("user unit:\n%s", usr)
+	}
+}
+
+func TestPlist(t *testing.T) {
+	p := launchdSystemPaths()
+	p.Config = "/etc/intergate-tunnel/a&b.yaml"
+	plist, err := p.plist("/usr/local/bin/intergate-tunnel")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := xml.Unmarshal([]byte(plist), new(struct{})); err != nil {
+		t.Fatalf("not XML: %v\n%s", err, plist)
+	}
+	for _, want := range []string{
+		"<string>io.github.jgermade.intergate-tunnel</string>",
+		"<string>/etc/intergate-tunnel/a&amp;b.yaml</string>",
+		"<string>/var/run/intergate-tunnel/status.json</string>",
+		"<key>KeepAlive</key>\n\t<true/>",
+		"<string>/var/log/intergate-tunnel.log</string>",
+	} {
+		if !strings.Contains(plist, want) {
+			t.Errorf("plist lacks %q:\n%s", want, plist)
+		}
+	}
+	if p.launchdTarget() != "system/io.github.jgermade.intergate-tunnel" {
+		t.Errorf("target = %s", p.launchdTarget())
+	}
+	u := Paths{User: true}
+	if !strings.HasPrefix(u.launchdTarget(), "gui/") {
+		t.Errorf("user target = %s", u.launchdTarget())
 	}
 }

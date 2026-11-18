@@ -32,6 +32,7 @@ REPO="jgermade/intergate"
 SETUP_URL="https://jgermade.github.io/intergate/setup.sh"
 UNIT="/etc/systemd/system/intergate.service"
 CLIENT_UNIT="/etc/systemd/system/intergate-tunnel.service"
+CLIENT_PLIST="/Library/LaunchDaemons/io.github.jgermade.intergate-tunnel.plist"
 CLIENT_CONFIG_DIR="/etc/intergate-tunnel"
 TMP=""
 
@@ -484,6 +485,17 @@ uninstall_intergate() {
 # to a gate. Its wizard sets up the tunnels and the service.
 client_active() { need systemctl && [ -f "$CLIENT_UNIT" ] && systemctl is-active --quiet intergate-tunnel 2>/dev/null; }
 
+# restart_client: a running client service starts the new binary.
+restart_client() {
+	if client_active; then
+		as_root systemctl restart intergate-tunnel
+	elif [ -f "$CLIENT_PLIST" ]; then
+		as_root launchctl kickstart -k system/io.github.jgermade.intergate-tunnel
+	else
+		return 1
+	fi
+}
+
 install_client() {
 	need curl || need wget || die "curl or wget is needed to download intergate-tunnel"
 	need tar || die "tar is needed to unpack intergate-tunnel"
@@ -503,8 +515,7 @@ install_client() {
 				say "Installed intergate-tunnel $NEW_VERSION at $CBIN."
 			else
 				say "Updated intergate-tunnel from $current to $NEW_VERSION at $CBIN."
-				if client_active; then
-					as_root systemctl restart intergate-tunnel
+				if restart_client; then
 					say "The intergate-tunnel service runs $NEW_VERSION now."
 				fi
 			fi
@@ -522,13 +533,16 @@ install_client() {
 }
 
 uninstall_client() {
-	if [ -f "$CLIENT_UNIT" ]; then
+	if [ -f "$CLIENT_UNIT" ] || [ -f "$CLIENT_PLIST" ]; then
 		if [ -x "$CBIN" ]; then
 			as_root "$CBIN" uninstall
-		else
+		elif [ -f "$CLIENT_UNIT" ]; then
 			as_root systemctl disable --now intergate-tunnel || true
 			as_root rm -f "$CLIENT_UNIT"
 			as_root systemctl daemon-reload || true
+		else
+			as_root launchctl bootout system/io.github.jgermade.intergate-tunnel || true
+			as_root rm -f "$CLIENT_PLIST"
 		fi
 	fi
 	if [ -e "$CBIN" ] || [ -L "$CBIN" ]; then

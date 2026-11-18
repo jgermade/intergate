@@ -134,7 +134,7 @@ the client reads the SSH endpoint and host key from its `/client.json`:
 ```sh
 sudo intergate-tunnel add web1.gate.example1.com --http 8080 --tcp db=5432 --allow 203.0.113.7
 sudo intergate-tunnel add web2.gate.example2.com --http 8090 --udp mc=19132@30100 --allow any
-sudo intergate-tunnel install        # a systemd service, started at boot
+sudo intergate-tunnel install        # a service started at boot: systemd, or launchd on macOS
 intergate-tunnel status
 ```
 
@@ -157,7 +157,10 @@ The dashboard's `tunnel.sh` does it all in one line with `--install`:
 
 What the machine forwards is in `/etc/intergate-tunnel/tunnels.yaml` (readable
 by root and the service's own user only, like the key); `--user` uses
-`~/.config/intergate-tunnel` and a systemd user service instead. `add` and
+`~/.config/intergate-tunnel` and a systemd user service instead. On macOS the
+service is a launchd job: a LaunchDaemon run as root, or with `--user` your
+LaunchAgent (`~/Library/Application Support/intergate-tunnel`), logging to
+`/var/log/intergate-tunnel.log` or `~/Library/Logs/intergate-tunnel.log`. `add` and
 `remove` reload the running service. `intergate-tunnel run` forwards it all in
 the foreground (SIGHUP reloads), and `intergate-tunnel run HOST --http 3000`
 forwards one subdomain now with your ssh-agent keys, without saving anything,

@@ -587,7 +587,7 @@ func (s *setup) offerService() error {
 	if s.paths.Installed() || len(s.cfg.Gates) == 0 {
 		return nil
 	}
-	if err := systemdAvailable(); err != nil {
+	if err := ServiceAvailable(); err != nil {
 		fmt.Println("\nTo keep it running, start intergate-tunnel run from your service manager.")
 		return nil
 	}

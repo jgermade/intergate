@@ -749,7 +749,7 @@ func cmdStatus(args []string) error {
 	case running:
 		fmt.Println("intergate-tunnel run is running.")
 	case p.Installed():
-		fmt.Println("The service is installed but not running: systemctl", map[bool]string{true: "--user "}[p.User]+"status intergate-tunnel")
+		fmt.Println("The service is installed but not running:", p.StatusCommand())
 	default:
 		fmt.Printf("Not running: %sintergate-tunnel install%s, or intergate-tunnel run\n", sudo(p), map[bool]string{true: " --user"}[p.User])
 	}
@@ -876,7 +876,7 @@ func cmdInstall(args []string) error {
 		return err
 	}
 	user := map[bool]string{true: " --user"}[p.User]
-	fmt.Printf("\nintergate-tunnel runs as a service.\n  status:  intergate-tunnel status%s\n  logs:    journalctl%s -u intergate-tunnel -f\n", user, user)
+	fmt.Printf("\nintergate-tunnel runs as a service.\n  status:  intergate-tunnel status%s\n  logs:    %s\n", user, p.LogsCommand())
 	if len(cfg.Gates) == 0 {
 		fmt.Printf("  next:    %sintergate-tunnel add HOST --http PORT%s\n", sudo(p), user)
 	}

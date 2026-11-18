@@ -31,8 +31,12 @@ type Paths struct {
 	Unit   string
 }
 
-// SystemPaths are the machine's: /etc/intergate-tunnel, run as its own user.
+// SystemPaths are the machine's: /etc/intergate-tunnel, run as its own user
+// (as root on macOS).
 func SystemPaths() Paths {
+	if runtime.GOOS == "darwin" {
+		return launchdSystemPaths()
+	}
 	return Paths{
 		Config: "/etc/intergate-tunnel/tunnels.yaml",
 		Status: "/run/intergate-tunnel/status.json",
@@ -50,12 +54,42 @@ func UserPaths() (Paths, error) {
 	if run == "" {
 		run = filepath.Join(os.TempDir(), "intergate-tunnel-"+strconv.Itoa(os.Getuid()))
 	}
-	return Paths{
+	p := Paths{
 		User:   true,
 		Config: filepath.Join(dir, "intergate-tunnel", "tunnels.yaml"),
 		Status: filepath.Join(run, "intergate-tunnel", "status.json"),
 		Unit:   filepath.Join(dir, "systemd", "user", "intergate-tunnel.service"),
-	}, nil
+	}
+	if runtime.GOOS == "darwin" {
+		if p.Unit, err = launchdUserUnit(); err != nil {
+			return Paths{}, err
+		}
+	}
+	return p, nil
+}
+
+func launchd() bool { return runtime.GOOS == "darwin" }
+
+// LogsCommand is how to follow the service's log.
+func (p Paths) LogsCommand() string {
+	if launchd() {
+		return "tail -f " + p.launchdLog()
+	}
+	if p.User {
+		return "journalctl --user -u intergate-tunnel -f"
+	}
+	return "journalctl -u intergate-tunnel -f"
+}
+
+// StatusCommand is how to ask the service manager about the service.
+func (p Paths) StatusCommand() string {
+	if launchd() {
+		return "launchctl print " + p.launchdTarget()
+	}
+	if p.User {
+		return "systemctl --user status intergate-tunnel"
+	}
+	return "systemctl status intergate-tunnel"
 }
 
 // systemctl runs systemctl for p's service manager.
@@ -74,13 +108,22 @@ func (p Paths) Installed() bool {
 
 // Active reports whether p's service runs.
 func (p Paths) Active() bool {
-	return p.Installed() && p.systemctl("is-active", "--quiet", serviceName).Run() == nil
+	if !p.Installed() {
+		return false
+	}
+	if launchd() {
+		return p.launchdActive()
+	}
+	return p.systemctl("is-active", "--quiet", serviceName).Run() == nil
 }
 
 // Reload tells a running service to read its configuration again.
 func (p Paths) Reload() error {
 	if !p.Active() {
 		return nil
+	}
+	if launchd() {
+		return p.launchdReload()
 	}
 	if out, err := p.systemctl("reload", serviceName).CombinedOutput(); err != nil {
 		return fmt.Errorf("reload the service: %v: %s", err, strings.TrimSpace(string(out)))
@@ -173,6 +216,15 @@ func (p Paths) unit(binary string) (string, error) {
 	return b.String(), err
 }
 
+// ServiceAvailable reports why this machine can't run the service, if it
+// can't: systemd on Linux, launchd on macOS.
+func ServiceAvailable() error {
+	if launchd() {
+		return nil
+	}
+	return systemdAvailable()
+}
+
 func systemdAvailable() error {
 	if runtime.GOOS != "linux" {
 		return fmt.Errorf("installing the service supports systemd on Linux; on %s run `intergate-tunnel run` from your own service manager", runtime.GOOS)
@@ -215,6 +267,9 @@ func (p Paths) command(args ...string) func() error {
 // binary to /usr/local/bin and runs as its own user; the user's runs this
 // binary where it is, and keeps running after logout if linger is allowed.
 func (p Paths) Install(cfg *Config, out io.Writer) error {
+	if launchd() {
+		return p.launchdInstall(cfg, out)
+	}
 	if err := systemdAvailable(); err != nil {
 		return err
 	}
@@ -275,11 +330,14 @@ func (p Paths) Install(cfg *Config, out io.Writer) error {
 // Uninstall stops and removes p's service, keeping the configuration and
 // the key.
 func (p Paths) Uninstall(out io.Writer) error {
-	if err := systemdAvailable(); err != nil {
-		return err
-	}
 	if !p.Installed() {
 		return errors.New("the intergate-tunnel service is not installed")
+	}
+	if launchd() {
+		return p.launchdUninstall(out)
+	}
+	if err := systemdAvailable(); err != nil {
+		return err
 	}
 	if !p.User && os.Geteuid() != 0 {
 		return errors.New("removing the system service needs root: run it with sudo")
