@@ -113,10 +113,10 @@ func (c *Client) SetAccess(ctx context.Context, name string, access store.Access
 	return c.do(ctx, http.MethodPost, "/v1/subdomains/"+url.PathEscape(name)+"/access", map[string]store.Access{"access": access}, nil)
 }
 
-// AddGuest lets someone besides its owner open a private subdomain.
-func (c *Client) AddGuest(ctx context.Context, name, email string) (*Guest, error) {
+// AddGuest lets an existing account, by id, open a private subdomain.
+func (c *Client) AddGuest(ctx context.Context, name string, userID int64) (*Guest, error) {
 	var out Guest
-	return &out, c.do(ctx, http.MethodPost, "/v1/subdomains/"+url.PathEscape(name)+"/guests", map[string]string{"email": email}, &out)
+	return &out, c.do(ctx, http.MethodPost, "/v1/subdomains/"+url.PathEscape(name)+"/guests", map[string]int64{"user_id": userID}, &out)
 }
 
 // RemoveGuest stops a guest from opening a private subdomain.
@@ -168,6 +168,12 @@ func (c *Client) SetUserDisabled(ctx context.Context, id int64, disabled bool) e
 		verb = "disable"
 	}
 	return c.do(ctx, http.MethodPost, fmt.Sprintf("/v1/users/%d/%s", id, verb), nil, nil)
+}
+
+// SetUserCanInvite lets a user share their private subdomains, or stops
+// them.
+func (c *Client) SetUserCanInvite(ctx context.Context, id int64, can bool) error {
+	return c.do(ctx, http.MethodPut, fmt.Sprintf("/v1/users/%d/can-invite", id), map[string]bool{"can_invite": can}, nil)
 }
 
 // UserKeys lists the SSH keys of an account.

@@ -23,9 +23,12 @@ type User struct {
 	// Added is set for accounts an administrator added: they may sign in
 	// whatever auth.allowed_* says. Role is the one given from the
 	// dashboard; auth.admins makes owners whatever it says.
-	Added       bool
-	Role        Role
-	Limits      UserLimits
+	Added  bool
+	Role   Role
+	Limits UserLimits
+	// CanInvite lets a user share their private subdomains with other
+	// accounts; admins and owners always may.
+	CanInvite   bool
 	CreatedAt   time.Time
 	LastLoginAt time.Time
 }
@@ -71,7 +74,7 @@ type UserLimits struct {
 	PortRanges string
 }
 
-const userColumns = `id, email, name, avatar_url, webauthn_id, disabled, added, role, max_subdomains, max_ports, port_ranges, created_at, last_login_at`
+const userColumns = `id, email, name, avatar_url, webauthn_id, disabled, added, role, max_subdomains, max_ports, port_ranges, can_invite, created_at, last_login_at`
 
 func intPtr(v sql.NullInt64) *int {
 	if !v.Valid {
@@ -87,7 +90,7 @@ func scanUser(row scanner) (*User, error) {
 	var u User
 	var created, lastLogin int64
 	var maxSub, maxPorts sql.NullInt64
-	if err := row.Scan(&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.WebAuthnID, &u.Disabled, &u.Added, &u.Role, &maxSub, &maxPorts, &u.Limits.PortRanges, &created, &lastLogin); err != nil {
+	if err := row.Scan(&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.WebAuthnID, &u.Disabled, &u.Added, &u.Role, &maxSub, &maxPorts, &u.Limits.PortRanges, &u.CanInvite, &created, &lastLogin); err != nil {
 		return nil, notFound(err)
 	}
 	u.Limits.Subdomains, u.Limits.Ports = intPtr(maxSub), intPtr(maxPorts)
@@ -225,7 +228,7 @@ func (s *Store) ListUsers(ctx context.Context) ([]UserSummary, error) {
 		var us UserSummary
 		var created, lastLogin int64
 		var maxSub, maxPorts sql.NullInt64
-		if err := rows.Scan(&us.ID, &us.Email, &us.Name, &us.AvatarURL, &us.WebAuthnID, &us.Disabled, &us.Added, &us.Role, &maxSub, &maxPorts, &us.Limits.PortRanges, &created, &lastLogin,
+		if err := rows.Scan(&us.ID, &us.Email, &us.Name, &us.AvatarURL, &us.WebAuthnID, &us.Disabled, &us.Added, &us.Role, &maxSub, &maxPorts, &us.Limits.PortRanges, &us.CanInvite, &created, &lastLogin,
 			&us.Subdomains, &us.Ports, &us.Passkeys, &us.Providers); err != nil {
 			return nil, err
 		}
@@ -295,6 +298,12 @@ func (s *Store) SetUserAdded(ctx context.Context, id int64) error {
 // owners whatever it is.
 func (s *Store) SetUserRole(ctx context.Context, id int64, role Role) error {
 	return s.setUser(ctx, id, "role", role)
+}
+
+// SetUserCanInvite lets a user share their private subdomains, or stops
+// them.
+func (s *Store) SetUserCanInvite(ctx context.Context, id int64, can bool) error {
+	return s.setUser(ctx, id, "can_invite", can)
 }
 
 // SetUserLimits saves the limits an administrator set for a user.
@@ -457,7 +466,7 @@ func (s *Store) CreateSession(ctx context.Context, userID int64, ttl time.Durati
 const sessionUserQuery = `
 	SELECT s.id, s.user_id, s.csrf_token, s.created_at, s.expires_at,
 		u.id, u.email, u.name, u.avatar_url, u.webauthn_id, u.disabled, u.added, u.role,
-		u.max_subdomains, u.max_ports, u.port_ranges, u.created_at, u.last_login_at
+		u.max_subdomains, u.max_ports, u.port_ranges, u.can_invite, u.created_at, u.last_login_at
 	FROM sessions s JOIN users u ON u.id = s.user_id `
 
 func (s *Store) scanSessionUser(row scanner) (*Session, *User, error) {
@@ -467,7 +476,7 @@ func (s *Store) scanSessionUser(row scanner) (*Session, *User, error) {
 	var maxSub, maxPorts sql.NullInt64
 	if err := row.Scan(&sess.ID, &sess.UserID, &sess.CSRFToken, &sCreated, &sExpires,
 		&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.WebAuthnID, &u.Disabled, &u.Added, &u.Role,
-		&maxSub, &maxPorts, &u.Limits.PortRanges, &uCreated, &uLogin); err != nil {
+		&maxSub, &maxPorts, &u.Limits.PortRanges, &u.CanInvite, &uCreated, &uLogin); err != nil {
 		return nil, nil, notFound(err)
 	}
 	u.Limits.Subdomains, u.Limits.Ports = intPtr(maxSub), intPtr(maxPorts)

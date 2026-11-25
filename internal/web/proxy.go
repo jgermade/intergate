@@ -151,9 +151,10 @@ func (s *Server) renderOffline(w http.ResponseWriter, name string) {
 }
 
 // mayOpen reports whether a signed-in user may open a tunnel with this
-// access: anyone for "users"; for "private", its owner and the people
-// they chose. Guests are looked up on each request, so removing one, like
-// changing the access, takes effect at once.
+// access: anyone for "users"; for "private", its owner and the accounts
+// they invited, while they may invite. Both are looked up on each request,
+// so removing a guest or the right to invite, like changing the access,
+// takes effect at once.
 func (s *Server) mayOpen(ctx context.Context, t *tunnel.Tunnel, access store.Access, user *store.User) bool {
 	switch access {
 	case store.AccessPublic, store.AccessUsers:
@@ -162,11 +163,19 @@ func (s *Server) mayOpen(ctx context.Context, t *tunnel.Tunnel, access store.Acc
 		if user.ID == t.OwnerID {
 			return true
 		}
-		ok, err := s.store.IsGuest(ctx, t.SubdomainID, user.Email)
-		if err != nil {
-			s.log.Error("check guest", "subdomain", t.Subdomain, "err", err)
+		ok, err := s.store.IsGuest(ctx, t.SubdomainID, user.ID)
+		if err != nil || !ok {
+			if err != nil {
+				s.log.Error("check guest", "subdomain", t.Subdomain, "err", err)
+			}
+			return false
 		}
-		return ok
+		owner, err := s.store.UserByID(ctx, t.OwnerID)
+		if err != nil {
+			s.log.Error("load owner", "subdomain", t.Subdomain, "err", err)
+			return false
+		}
+		return s.manage.MayInvite(owner)
 	}
 	return false
 }

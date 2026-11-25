@@ -217,6 +217,19 @@ func TestWizardManagesRunningServer(t *testing.T) {
 	if err != nil || !u.Disabled {
 		t.Fatalf("user = %+v, %v\n%s", u, err, out)
 	}
+
+	// Let dev invite other users to their private subdomains.
+	out = runWizard(t, path,
+		"2", // Users
+		"1", // dev@example.com
+		"3", // Let them invite other users (Add, Disable, Invite, Back)
+		"4", // ← Back
+		"4", // ← Back (dev, newbie, Add, Back)
+		"4", // Exit
+	)
+	if u, err := h.store.UserByEmail(t.Context(), "dev@example.com"); err != nil || !u.CanInvite || !strings.Contains(out, "can invite other users") {
+		t.Fatalf("dev = %+v, %v\n%s", u, err, out)
+	}
 }
 
 // TestWizardAccountKeys adds a key to an account, then to a subdomain and
@@ -239,7 +252,7 @@ func TestWizardAccountKeys(t *testing.T) {
 		"1",     // dev@example.com
 		"1",     // Add SSH keys to the account
 		key, "", // the key, no name
-		"4",      // ← Back (Add, Remove, Disable, Back)
+		"5",      // ← Back (Add, Remove, Disable, Invite, Back)
 		"3", "4", // ← Back, Exit
 	)
 	if !strings.Contains(out, "Added 1 key(s) to the account") || !strings.Contains(out, "laptop") || !strings.Contains(out, "on no subdomain") {
@@ -279,7 +292,7 @@ func TestWizardAccountKeys(t *testing.T) {
 		"2", "1", // Users, dev@example.com
 		"2", // Remove a key from the account
 		"1", // laptop
-		"3", // ← Back (Add, Disable, Back)
+		"4", // ← Back (Add, Disable, Invite, Back)
 		"3", "4",
 	)
 	if !strings.Contains(out, "Key removed, from wiz, wiz2 too") {

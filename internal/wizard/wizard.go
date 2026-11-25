@@ -692,13 +692,18 @@ func (w *Wizard) subdomain(c *admin.Client, name string) error {
 			w.printf("  ○ offline\n")
 		}
 		if sd.Access == store.AccessPrivate {
-			if len(sd.GuestList) == 0 {
+			switch {
+			case len(sd.GuestList) == 0:
 				w.printf("  Only %s can open it.\n", sd.Owner)
-			} else {
+			case sd.CanInvite:
 				w.printf("  Also open to:")
-				for _, g := range sd.GuestList {
-					w.printf(" %s", g.Email)
-				}
+			default:
+				w.printf("  Invited, but not let in while %s may not invite other users:", sd.Owner)
+			}
+			for _, g := range sd.GuestList {
+				w.printf(" %s", g.Email)
+			}
+			if len(sd.GuestList) > 0 {
 				w.printf("\n")
 			}
 		}
@@ -723,8 +728,8 @@ func (w *Wizard) subdomain(c *admin.Client, name string) error {
 			opts = append(opts, huh.NewOption("Add a key from "+sd.Owner+"'s account", "accountkey"))
 		}
 		opts = append(opts, huh.NewOption("Change who can open it", "access"))
-		if sd.Access == store.AccessPrivate {
-			opts = append(opts, huh.NewOption("Let someone else open it", "addguest"))
+		if sd.Access == store.AccessPrivate && sd.CanInvite {
+			opts = append(opts, huh.NewOption("Invite another user to open it", "addguest"))
 		}
 		if sd.Access == store.AccessPrivate && len(sd.GuestList) > 0 {
 			opts = append(opts, huh.NewOption("Stop someone from opening it", "rmguest"))
@@ -850,30 +855,36 @@ func (w *Wizard) removeKey(c *admin.Client, sd *admin.SubdomainDetail) error {
 }
 
 func (w *Wizard) addGuest(c *admin.Client, sd *admin.SubdomainDetail) error {
-	// Accounts that may sign in, completed with Tab.
-	var known []string
-	if users, err := c.Users(w.ctx); err == nil {
-		have := map[string]bool{sd.Owner: true}
-		for _, g := range sd.GuestList {
-			have[g.Email] = true
-		}
-		for _, u := range users {
-			if u.Allowed && !u.Disabled && !have[u.Email] {
-				known = append(known, u.Email)
-			}
-		}
-	}
-	desc := "They open " + sd.Name + " after signing in with it, if they may sign in to this intergate."
-	if len(known) > 0 {
-		desc += " Tab completes the email of an account."
-	}
-	var email string
-	err := w.form(huh.NewGroup(huh.NewInput().Title("Email").Description(desc).Suggestions(known).
-		Validate(required("an email")).Value(&email)).Title("Let someone else open " + sd.Name))
+	// Only existing accounts that may sign in, and aren't there yet.
+	users, err := c.Users(w.ctx)
 	if err != nil {
 		return err
 	}
-	g, err := c.AddGuest(w.ctx, sd.Name, email)
+	have := map[string]bool{sd.Owner: true}
+	for _, g := range sd.GuestList {
+		have[g.Email] = true
+	}
+	opts := make([]huh.Option[int64], 0, len(users)+1)
+	for _, u := range users {
+		if u.Allowed && !u.Disabled && !have[u.Email] {
+			label := u.Email
+			if u.Name != "" {
+				label = fmt.Sprintf("%s  (%s)", u.Email, u.Name)
+			}
+			opts = append(opts, huh.NewOption(label, u.ID))
+		}
+	}
+	if len(opts) == 0 {
+		w.printf("Nobody else to invite: only existing users can be, and every one that may sign in can open it already.\n")
+		return nil
+	}
+	opts = append(opts, huh.NewOption("← Cancel", int64(0)))
+	id := opts[0].Value
+	if err := w.form(huh.NewGroup(huh.NewSelect[int64]().Title("Invite whom to open " + sd.Name + "?").
+		Description("They open it after signing in.").Options(opts...).Value(&id))); err != nil || id == 0 {
+		return err
+	}
+	g, err := c.AddGuest(w.ctx, sd.Name, id)
 	if err != nil {
 		return err
 	}
@@ -990,7 +1001,15 @@ func (w *Wizard) user(c *admin.Client, u admin.User) error {
 		if len(keys) > 0 {
 			opts = append(opts, huh.NewOption("Remove a key from the account", "rmkey"))
 		}
-		opts = append(opts, huh.NewOption(verb+" "+u.Email, "toggle"), huh.NewOption("← Back", "back"))
+		opts = append(opts, huh.NewOption(verb+" "+u.Email, "toggle"))
+		if u.Role == string(store.RoleUser) {
+			if u.CanInvite {
+				opts = append(opts, huh.NewOption("Stop them inviting other users to their private subdomains", "noinvite"))
+			} else {
+				opts = append(opts, huh.NewOption("Let them invite other users to their private subdomains", "invite"))
+			}
+		}
+		opts = append(opts, huh.NewOption("← Back", "back"))
 		action := "addkeys"
 		if err := w.form(huh.NewGroup(huh.NewSelect[string]().Title(u.Email).Options(opts...).Value(&action))); err != nil || action == "back" {
 			return err
@@ -1002,6 +1021,15 @@ func (w *Wizard) user(c *admin.Client, u admin.User) error {
 			err = w.removeUserKey(c, u, keys)
 		case "toggle":
 			return w.toggleUser(c, u, verb)
+		case "invite", "noinvite":
+			if err = c.SetUserCanInvite(w.ctx, u.ID, action == "invite"); err == nil {
+				u.CanInvite = action == "invite"
+				if u.CanInvite {
+					w.printf("✔ %s can invite other users to their private subdomains.\n", u.Email)
+				} else {
+					w.printf("✔ %s can no longer invite: their guests can't open their subdomains until it is allowed again.\n", u.Email)
+				}
+			}
 		}
 		if err != nil && !aborted(err) {
 			w.problem(err)
