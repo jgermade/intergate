@@ -335,6 +335,21 @@ func (s *Server) handleAddGuest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, api.NewGuest(g))
 }
 
+// handleGuestSuggestions answers the add form's typeahead with accounts
+// that could open the subdomain.
+func (s *Server) handleGuestSuggestions(w http.ResponseWriter, r *http.Request) {
+	d := s.loadSubdomain(w, r)
+	if d == nil {
+		return
+	}
+	users, err := s.manage.GuestSuggestions(r.Context(), d, r.URL.Query().Get("q"))
+	if err != nil {
+		s.internalError(w, "suggest guests", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, api.NewPeople(users))
+}
+
 func (s *Server) handleDeleteGuest(w http.ResponseWriter, r *http.Request) {
 	d := s.loadSubdomain(w, r)
 	if d == nil {

@@ -323,6 +323,25 @@ div.allow .hint { margin: 0; }
 .guests .empty-inline { margin: 0; }
 .guest-email { overflow-wrap: anywhere; }
 
+/* An email field that suggests accounts: the list hangs under it. */
+.typeahead, .form-row > [data-c79-box] > .typeahead { position: relative; flex: 1 1 13.75rem; min-width: 0; }
+.typeahead input { width: 100%; }
+.typeahead-list {
+  position: absolute; z-index: 20; top: 100%; left: 0; right: 0; margin: .25rem 0 0; padding: .25rem; list-style: none;
+  border: var(--ig-hairline) solid var(--ig-line); border-radius: var(--ig-radius-md);
+  background: var(--ig-material-hud); -webkit-backdrop-filter: var(--ig-blur); backdrop-filter: var(--ig-blur);
+  box-shadow: var(--ig-shadow-pop); color: var(--ig-fg);
+}
+.typeahead-list[hidden] { display: none; }
+.typeahead-list li {
+  display: flex; align-items: center; gap: var(--ig-space-3); min-height: 2.5rem; padding: .375rem .625rem;
+  border-radius: var(--ig-radius-sm); cursor: pointer;
+}
+.typeahead-list li.active { background: var(--ig-fill); }
+.typeahead-text { display: flex; flex-direction: column; min-width: 0; }
+.typeahead-name { font-weight: var(--ig-weight-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.typeahead-email { color: var(--ig-fg-muted); font-size: var(--ig-text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .command-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem .75rem; flex-wrap: wrap; }
 .command-head p { margin: 0; flex: 1 1 17.5rem; }
 

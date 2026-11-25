@@ -3,6 +3,7 @@ package manage
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/jgermade/intergate/internal/store"
 )
@@ -52,4 +53,30 @@ func (s *Service) RemoveGuest(ctx context.Context, d *store.Subdomain, guestID i
 	}
 	s.log.Info("guest removed", "subdomain", d.Name, "email", g.Email, "by", actor)
 	return g, nil
+}
+
+// GuestSuggestionsLimit is how many accounts GuestSuggestions returns.
+const GuestSuggestionsLimit = 8
+
+// GuestSuggestions lists accounts that could be added to d, for a
+// typeahead: those whose email or name contains q, that may sign in, and
+// are neither its owner nor already there.
+func (s *Service) GuestSuggestions(ctx context.Context, d *store.Subdomain, q string) ([]*store.User, error) {
+	if q = strings.TrimSpace(q); q == "" {
+		return nil, nil
+	}
+	// Some of them may not sign in: ask for more than are shown.
+	users, err := s.store.GuestCandidates(ctx, d.ID, q, 5*GuestSuggestionsLimit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*store.User, 0, GuestSuggestionsLimit)
+	for _, u := range users {
+		if s.cfg.UserAllowed(u.Email, u.Added, string(u.Role)) {
+			if out = append(out, u); len(out) == GuestSuggestionsLimit {
+				break
+			}
+		}
+	}
+	return out, nil
 }

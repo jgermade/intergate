@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -81,4 +82,38 @@ func (s *Store) IsGuest(ctx context.Context, subdomainID int64, email string) (b
 		return false, nil
 	}
 	return err == nil, err
+}
+
+// GuestCandidates lists enabled accounts whose email or name contains q,
+// for suggestions on a subdomain: not its owner nor its guests. Emails
+// starting with q come first, then who signed in last. At most limit.
+func (s *Store) GuestCandidates(ctx context.Context, subdomainID int64, q string, limit int) ([]*User, error) {
+	like := "%" + escapeLike(strings.ToLower(strings.TrimSpace(q))) + "%"
+	prefix := escapeLike(strings.ToLower(strings.TrimSpace(q))) + "%"
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+userColumns+` FROM users
+		WHERE disabled = 0
+			AND id != (SELECT user_id FROM subdomains WHERE id = ?)
+			AND email NOT IN (SELECT email FROM subdomain_guests WHERE subdomain_id = ?)
+			AND (email LIKE ? ESCAPE '\' OR name LIKE ? ESCAPE '\')
+		ORDER BY email LIKE ? ESCAPE '\' DESC, last_login_at DESC, email
+		LIMIT ?`, subdomainID, subdomainID, like, like, prefix, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*User
+	for rows.Next() {
+		u, err := scanUser(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+// escapeLike makes s match itself in a LIKE pattern with ESCAPE '\'.
+func escapeLike(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
 }

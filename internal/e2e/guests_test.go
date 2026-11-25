@@ -3,6 +3,7 @@ package e2e
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -114,5 +115,72 @@ func TestPrivateGuests(t *testing.T) {
 	}
 	if _, err := sock.AddGuest(t.Context(), "secret", "alice@example.com"); err == nil || !strings.Contains(err.Error(), "can always open secret") {
 		t.Errorf("socket adds the owner: %v", err)
+	}
+}
+
+// The add form suggests accounts that could open the subdomain.
+func TestGuestSuggestions(t *testing.T) {
+	h := newHarness(t)
+	ctx := t.Context()
+	h.setup("alice@example.com", "secret", store.AccessPrivate)
+	for _, u := range []struct{ email, name string }{
+		{"bob@example.com", "Bob Builder"},
+		{"barbara@example.com", ""},
+		{"robert_b@example.com", "Rob"},
+		{"dan@example.com", "Dan Bobson"},
+		{"outsider@other.test", "Bob Outside"},
+	} {
+		if _, err := h.store.CreateUser(ctx, u.email, u.name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dan, _ := h.store.UserByEmail(ctx, "dan@example.com")
+	if err := h.store.SetUserDisabled(ctx, dan.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	alice := h.browser(true)
+	h.login(alice, "alice@example.com")
+	suggest := func(q string) []string {
+		t.Helper()
+		resp, body := call(t, alice, "GET", "/api/subdomains/secret/guests/suggestions?q="+url.QueryEscape(q), nil)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("suggest %q: %d %s", q, resp.StatusCode, body)
+		}
+		var emails []string
+		for _, p := range decode[[]api.Person](t, body) {
+			emails = append(emails, p.Email)
+		}
+		return emails
+	}
+
+	// By email or name, emails starting with it first; never the owner, a
+	// disabled account or one that may not sign in.
+	if got := fmt.Sprint(suggest("B")); got != "[barbara@example.com bob@example.com robert_b@example.com]" {
+		t.Errorf("suggest B = %s", got)
+	}
+	if got := fmt.Sprint(suggest("builder")); got != "[bob@example.com]" {
+		t.Errorf("suggest builder = %s", got)
+	}
+	if got := suggest("alice"); len(got) != 0 {
+		t.Errorf("the owner suggested: %v", got)
+	}
+	// LIKE's wildcards are only themselves.
+	if got := fmt.Sprint(suggest("_")); got != "[robert_b@example.com]" {
+		t.Errorf("suggest _ = %s", got)
+	}
+	if got := suggest("%"); len(got) != 0 {
+		t.Errorf("suggest %% = %v", got)
+	}
+	if got := suggest("  "); len(got) != 0 {
+		t.Errorf("suggest blank = %v", got)
+	}
+	// Once added, someone is no longer suggested.
+	call(t, alice, "POST", "/api/subdomains/secret/guests", map[string]string{"email": "bob@example.com"})
+	if got := fmt.Sprint(suggest("b")); got != "[barbara@example.com robert_b@example.com]" {
+		t.Errorf("suggest b after adding bob = %s", got)
+	}
+	// Only who manages the subdomain gets suggestions for it.
+	if resp, _ := call(t, h.loggedIn("barbara@example.com"), "GET", "/api/subdomains/secret/guests/suggestions?q=b", nil); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("barbara asks: %d", resp.StatusCode)
 	}
 }

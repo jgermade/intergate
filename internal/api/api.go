@@ -147,6 +147,22 @@ func NewGuests(guests []*store.Guest) []Guest {
 	return out
 }
 
+// Person is an account as others see it, to pick it: no id nor role.
+type Person struct {
+	Email     string `json:"email"`
+	Name      string `json:"name"`
+	AvatarURL string `json:"avatar_url"`
+}
+
+// NewPeople describes users; never nil, so it encodes as [].
+func NewPeople(users []*store.User) []Person {
+	out := make([]Person, len(users))
+	for i, u := range users {
+		out[i] = Person{Email: u.Email, Name: u.Name, AvatarURL: u.AvatarURL}
+	}
+	return out
+}
+
 // SubdomainDetail is a subdomain with its keys, ports and guests.
 type SubdomainDetail struct {
 	Subdomain

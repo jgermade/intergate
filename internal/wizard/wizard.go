@@ -850,9 +850,25 @@ func (w *Wizard) removeKey(c *admin.Client, sd *admin.SubdomainDetail) error {
 }
 
 func (w *Wizard) addGuest(c *admin.Client, sd *admin.SubdomainDetail) error {
+	// Accounts that may sign in, completed with Tab.
+	var known []string
+	if users, err := c.Users(w.ctx); err == nil {
+		have := map[string]bool{sd.Owner: true}
+		for _, g := range sd.GuestList {
+			have[g.Email] = true
+		}
+		for _, u := range users {
+			if u.Allowed && !u.Disabled && !have[u.Email] {
+				known = append(known, u.Email)
+			}
+		}
+	}
+	desc := "They open " + sd.Name + " after signing in with it, if they may sign in to this intergate."
+	if len(known) > 0 {
+		desc += " Tab completes the email of an account."
+	}
 	var email string
-	err := w.form(huh.NewGroup(huh.NewInput().Title("Email").
-		Description("They open " + sd.Name + " after signing in with it, if they may sign in to this intergate.").
+	err := w.form(huh.NewGroup(huh.NewInput().Title("Email").Description(desc).Suggestions(known).
 		Validate(required("an email")).Value(&email)).Title("Let someone else open " + sd.Name))
 	if err != nil {
 		return err

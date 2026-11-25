@@ -1,19 +1,22 @@
 <script :setup="{ sub = null }">
   // Who besides its owner may open a private subdomain: their emails, each
-  // with a button that removes it, and a form that adds one. Tells its page
-  // to reload with a `changed` event.
+  // with a button that removes it, and a form that adds one, suggesting
+  // accounts as you type (picking one adds it) or taking any email. Tells
+  // its page to reload with a `changed` event.
   //
   //   <AccessGuests :if="sub.access === 'private'" :sub="sub" @changed="load()" />
   const [
     { app, toast },
     { api },
     { ago },
+    UserTypeahead,
     Badge,
     Button,
   ] = await C79.importAll([
     "@ui/lib/store.js",
     "@ui/lib/api.js",
     "@ui/lib/format.js",
+    "@ui/components/user-typeahead.html",
     "@theme/components/badge.html",
     "@theme/components/button.html",
   ])
@@ -25,7 +28,10 @@
   let busy = false
   $: full = sub.guest_list.length >= sub.guests_limit
 
+  const suggestions = q => api("GET", path() + "/suggestions?q=" + encodeURIComponent(q))
+
   const add = async () => {
+    if (busy || !email.trim()) return
     busy = true
     try {
       const guest = await api("POST", path(), { email: email.trim() })
@@ -36,6 +42,12 @@
       toast(e.message, "error")
     }
     busy = false
+  }
+
+  // A suggestion picked is added at once.
+  const picked = value => {
+    email = value
+    add()
   }
 
   const remove = async guest => {
@@ -72,8 +84,8 @@
   </div>
   <p :else class="empty-inline">Nobody else yet: only {{ sub.mine ? "you" : sub.owner }} can open it.</p>
   <form :if="!full" class="form-row" @submit.prevent="add">
-    <input type="email" name="guest-email" required maxlength="254" autocomplete="off" spellcheck="false" autocapitalize="off"
-           placeholder="name@example.com" aria-label="Email of someone else who may open it" :value="email" @input="email = $event.target.value">
+    <UserTypeahead name="guest-email" label="Email of someone else who may open it" placeholder="Name or email"
+                   :model="email" :search="suggestions" @pick="picked($event.detail)" />
     <Button type="submit" variant="secondary" icon="plus" :disabled="busy || !email.trim()">Add</Button>
   </form>
   <p :else class="hint">A subdomain can be shared with at most {{ sub.guests_limit }} people: remove one to add another.</p>
