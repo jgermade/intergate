@@ -26,8 +26,10 @@ ssh -p 2222 -R myapp:80:localhost:3000 gate.example.com
   passkeys (fingerprint, face or device PIN). GitHub and any OpenID Connect
   provider can be added as optional sign-in methods.
 - **Access control per subdomain:** *public*, *signed-in users* or *private*
-  (owner only). Protected tunnels send visitors to sign in and work with any
-  app behind them; the app never sees intergate's cookies.
+  (the owner, and other users they invite, if an administrator lets them:
+  **Admin → Users →** a user's options). Protected tunnels send visitors to
+  sign in and work with any app behind them; the app never sees
+  intergate's cookies.
 - **Live view** of every tunnel: client address, key, requests and traffic,
   with a disconnect button. Removing a key or disabling a user closes their
   tunnels at once. The SSH session prints every request, like sish.
@@ -661,7 +663,14 @@ auth:
   host-bound token that the tunnel host exchanges for a host-only, HttpOnly
   cookie tied to the dashboard session. Signing out revokes access to every
   tunnel. intergate's cookies are stripped before requests reach the app.
-  Signed-in users who may not open a tunnel see it as offline.
+  Signed-in users who may not open a tunnel see it as offline. Who may open
+  a private one is checked on every request: its owner, and the accounts
+  they invited while they may invite, so removing someone or taking away
+  the right to invite takes effect at once. Only existing accounts that
+  may sign in can be invited; inviting never lets anyone sign in. Users may
+  invite only once an administrator allows it in their options (admins and
+  owners always may), and those who may see the other users' emails and
+  names in the list they invite from.
 - **DNS providers:** their credentials can change your zone, so give them
   as little as the provider allows (Cloudflare: **Zone → DNS → Edit** on
   that zone only). Set from the dashboard, only owners change them, after
@@ -764,6 +773,5 @@ hero, regenerate the landing, then run `node scripts/landing/og.js`.
 ## Roadmap
 
 - User limits from `intergate config` too.
-- Sharing private subdomains with specific users.
 - Custom domains (CNAME to a subdomain).
 - Request inspector in the dashboard.

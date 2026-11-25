@@ -315,6 +315,16 @@ select.role {
 div.allow { display: grid; gap: var(--ig-space-3); }
 div.allow .hint { margin: 0; }
 
+/* Who else can open a private subdomain, under its access choice. */
+.guests { display: grid; gap: var(--ig-space-4); margin-top: var(--ig-space-7); padding-top: var(--ig-space-7); border-top: var(--ig-hairline) solid var(--ig-line); }
+.guests-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ig-space-4); }
+.guests-head h3 { margin: 0; font-size: var(--ig-text-md); }
+.guests .hint { margin: 0; }
+.guests .empty-inline { margin: 0; }
+.guest-user { display: flex; align-items: center; gap: var(--ig-space-3); }
+.guest-text { display: flex; flex-direction: column; min-width: 0; }
+.guest-name, .guest-email { overflow-wrap: anywhere; }
+
 .command-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem .75rem; flex-wrap: wrap; }
 .command-head p { margin: 0; flex: 1 1 17.5rem; }
 
@@ -352,9 +362,10 @@ legend .hint { display: block; margin-top: 0; }
 .keys-forms > .form { margin-top: 0; }
 .or { display: flex; align-items: center; gap: var(--ig-space-4); margin: 0; color: var(--ig-fg-muted); font-size: var(--ig-text-sm); }
 .or::before, .or::after { content: ""; flex: 1; border-top: var(--ig-hairline) solid var(--ig-separator); }
-.pick-key { flex-wrap: nowrap; align-items: stretch; }
-.pick-key > [data-c79-box]:first-child > * { flex: 1 1 0; min-width: 0; }
-.pick-key > [data-c79-box]:last-child > * { flex: none; }
+/* A select and its button on one line: an account key, a user to invite. */
+.pick-key, .pick-guest { flex-wrap: nowrap; align-items: stretch; }
+:is(.pick-key, .pick-guest) > [data-c79-box]:first-child > * { flex: 1 1 0; min-width: 0; }
+:is(.pick-key, .pick-guest) > [data-c79-box]:last-child > * { flex: none; }
 .key-subdomains { display: flex; flex-wrap: wrap; gap: .125rem .625rem; }
 /* What adds to the list in the card above it, centred under it. */
 .card-actions { display: flex; justify-content: center; gap: var(--ig-space-4); }

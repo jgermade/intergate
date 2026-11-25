@@ -72,6 +72,7 @@ type (
 	User            = api.User
 	KeysResult      = api.KeysResult
 	AccountKey      = api.AccountKey
+	Guest           = api.Guest
 )
 
 // CreateSubdomainRequest registers a subdomain for Owner (created if new).
@@ -120,6 +121,8 @@ func NewHandler(cfg *config.Config, st *store.Store, svc *manage.Service, set *s
 	h.mux.HandleFunc("POST /v1/subdomains", h.createSubdomain)
 	h.mux.HandleFunc("GET /v1/subdomains/{name}", h.getSubdomain)
 	h.mux.HandleFunc("POST /v1/subdomains/{name}/access", h.setAccess)
+	h.mux.HandleFunc("POST /v1/subdomains/{name}/guests", h.addGuest)
+	h.mux.HandleFunc("DELETE /v1/subdomains/{name}/guests/{id}", h.removeGuest)
 	h.mux.HandleFunc("POST /v1/subdomains/{name}/keys", h.addKeys)
 	h.mux.HandleFunc("DELETE /v1/subdomains/{name}/keys/{id}", h.removeKey)
 	h.mux.HandleFunc("POST /v1/subdomains/{name}/disconnect", h.disconnect)
@@ -128,6 +131,7 @@ func NewHandler(cfg *config.Config, st *store.Store, svc *manage.Service, set *s
 	h.mux.HandleFunc("POST /v1/users", h.createUser)
 	h.mux.HandleFunc("POST /v1/users/{id}/disable", h.setDisabled(true))
 	h.mux.HandleFunc("POST /v1/users/{id}/enable", h.setDisabled(false))
+	h.mux.HandleFunc("PUT /v1/users/{id}/can-invite", h.setCanInvite)
 	h.mux.HandleFunc("GET /v1/users/{id}/keys", h.userKeys)
 	h.mux.HandleFunc("POST /v1/users/{id}/keys", h.addUserKeys)
 	h.mux.HandleFunc("DELETE /v1/users/{id}/keys/{key}", h.removeUserKey)
@@ -269,7 +273,17 @@ func (h *Handler) getSubdomain(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, SubdomainDetail{Subdomain: h.subdomain(d), KeyList: api.NewKeys(keys)})
+	guests, err := h.store.GuestsBySubdomain(r.Context(), d.ID)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	canInvite, err := h.manage.OwnerMayInvite(r.Context(), d)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, SubdomainDetail{Subdomain: h.subdomain(d), KeyList: api.NewKeys(keys), GuestList: api.NewGuests(guests), CanInvite: canInvite})
 }
 
 func (h *Handler) createSubdomain(w http.ResponseWriter, r *http.Request) {
@@ -392,6 +406,40 @@ func (h *Handler) removeKey(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *Handler) addGuest(w http.ResponseWriter, r *http.Request) {
+	d := h.load(w, r)
+	if d == nil {
+		return
+	}
+	var req struct {
+		UserID int64  `json:"user_id"`
+		Email  string `json:"email"`
+	}
+	if err := decode(r, &req); err != nil {
+		h.fail(w, err)
+		return
+	}
+	g, err := h.manage.AddGuest(r.Context(), d, req.UserID, req.Email, actor)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, api.NewGuest(g))
+}
+
+func (h *Handler) removeGuest(w http.ResponseWriter, r *http.Request) {
+	d := h.load(w, r)
+	if d == nil {
+		return
+	}
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if _, err := h.manage.RemoveGuest(r.Context(), d, id, actor); err != nil {
+		h.fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) disconnect(w http.ResponseWriter, r *http.Request) {
 	d := h.load(w, r)
 	if d == nil {
@@ -439,6 +487,22 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, api.NewUser(h.cfg, store.UserSummary{User: *u}, h.manage.Limits(u)))
+}
+
+func (h *Handler) setCanInvite(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	var req struct {
+		CanInvite bool `json:"can_invite"`
+	}
+	if err := decode(r, &req); err != nil {
+		h.fail(w, err)
+		return
+	}
+	if err := h.manage.SetUserCanInvite(r.Context(), id, req.CanInvite, actor); err != nil {
+		h.fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) setDisabled(disabled bool) http.HandlerFunc {

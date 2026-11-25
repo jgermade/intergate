@@ -6,6 +6,7 @@
     { api },
     { ago, bytes },
     AccessOptions,
+    AccessGuests,
     StatusBadge,
     CopyText,
     TcpPorts,
@@ -22,6 +23,7 @@
     "@ui/lib/api.js",
     "@ui/lib/format.js",
     "@ui/components/access-options.html",
+    "@ui/components/access-guests.html",
     "@ui/components/status-badge.html",
     "@ui/components/copy-text.html",
     "@ui/components/tcp-ports.html",
@@ -240,6 +242,7 @@
         <legend class="sr-only">Who can open {{ sub.name }}.{{ app.domain }}</legend>
         <AccessOptions :model="sub.access" @pick="setAccess($event.detail)" />
       </fieldset>
+      <AccessGuests :if="sub.access === 'private'" :sub="sub" @changed="load()" />
     </Card>
 
     <TcpPorts :if="app.tcp" :sub="sub" @changed="load()" />

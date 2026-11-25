@@ -155,6 +155,17 @@ var migrations = []string{
 	// Who created a port: a user's email from the dashboard, or a key
 	// from the intergate client.
 	`ALTER TABLE tcp_ports ADD COLUMN created_by TEXT NOT NULL DEFAULT '';`,
+	// People besides its owner who may open a private subdomain: existing
+	// accounts, invited by owners an administrator lets invite (or admins).
+	`CREATE TABLE subdomain_guests (
+		id           INTEGER PRIMARY KEY,
+		subdomain_id INTEGER NOT NULL REFERENCES subdomains(id) ON DELETE CASCADE,
+		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		created_at   INTEGER NOT NULL,
+		UNIQUE (subdomain_id, user_id)
+	);
+	CREATE INDEX subdomain_guests_user ON subdomain_guests(user_id);
+	ALTER TABLE users ADD COLUMN can_invite INTEGER NOT NULL DEFAULT 0;`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {

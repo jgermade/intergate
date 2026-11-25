@@ -1,0 +1,132 @@
+<script :setup="{ sub = null }">
+  // Who besides its owner may open a private subdomain: the users its owner
+  // invited, each with a button that removes them, and, while the owner may
+  // invite, a select of the other users to invite one. Only existing
+  // accounts can be. Tells its page to reload with a `changed` event.
+  //
+  //   <AccessGuests :if="sub.access === 'private'" :sub="sub" @changed="load()" />
+  const [
+    { app, toast },
+    { api },
+    { ago },
+    Alert,
+    Badge,
+    Button,
+    Select,
+  ] = await C79.importAll([
+    "@ui/lib/store.js",
+    "@ui/lib/api.js",
+    "@ui/lib/format.js",
+    "@theme/components/alert.html",
+    "@theme/components/badge.html",
+    "@theme/components/button.html",
+    "@theme/components/select.html",
+  ])
+
+  const path = () => "/subdomains/" + encodeURIComponent(sub.name) + "/guests"
+  const host = () => sub.name + "." + app.domain
+
+  // The users that could be invited, and the one picked.
+  let candidates = []
+  let picked = ""
+  let busy = false
+  // What they were loaded for: asked again when the guests or the right to
+  // invite change, here or elsewhere.
+  let loadedFor = ""
+  const loadCandidates = async key => {
+    loadedFor = key
+    if (!sub.can_invite) {
+      candidates = []
+      return
+    }
+    try {
+      const list = await api("GET", path() + "/candidates")
+      if (key !== loadedFor) return
+      candidates = list
+      if (!list.some(p => String(p.id) === String(picked))) picked = ""
+    } catch (e) {
+      toast(e.message, "error")
+    }
+  }
+  $: key = sub.name + (sub.can_invite ? "+" : "-") + sub.guest_list.map(g => g.user_id).join(",")
+  $: key !== loadedFor && loadCandidates(key)
+
+  // By name, or email when there is none, as people read them (María
+  // before Marta).
+  const shown = p => p.name || p.email
+  $: items = [...candidates]
+    .sort((a, b) => shown(a).localeCompare(shown(b), undefined, { sensitivity: "base" }))
+    .map(p => ({ value: p.id, label: shown(p), hint: p.name ? p.email : "", icon: "user" }))
+  // The first one until another is picked.
+  $: picked === "" && items.length && (picked = items[0].value)
+  $: full = sub.guest_list.length >= sub.guests_limit
+  // Whose subdomain it is, as this page's reader says it.
+  $: who = sub.mine ? "you" : sub.owner
+  $: whose = sub.mine ? "your" : "their"
+
+  const add = async () => {
+    if (busy || !picked) return
+    busy = true
+    try {
+      const guest = await api("POST", path(), { user_id: Number(picked) })
+      toast(`${guest.email} can open ${host()}.`)
+      $emit("changed")
+    } catch (e) {
+      toast(e.message, "error")
+    }
+    busy = false
+  }
+
+  const remove = async guest => {
+    if (!confirm(`Stop ${guest.email} from opening ${host()}? It takes effect on their next request.`)) return
+    try {
+      await api("DELETE", `${path()}/${guest.id}`)
+      toast(`${guest.email} can no longer open ${host()}.`)
+    } catch (e) {
+      toast(e.message, "error")
+    }
+    $emit("changed")
+  }
+</script>
+
+<section class="guests" aria-label="Who else can open it">
+  <div class="guests-head">
+    <h3>Who else can open it</h3>
+    <Badge :if="sub.can_invite || sub.guest_list.length">{{ sub.guest_list.length }} of {{ sub.guests_limit }}</Badge>
+  </div>
+  <Alert :if="!sub.can_invite && sub.guest_list.length" tone="warn" flush>
+    {{ sub.mine ? "You" : sub.owner }} may not invite other users now, so the people below can’t open it. An administrator can allow it again in {{ whose }} options.
+  </Alert>
+  <p :elseif="!sub.can_invite" class="empty-inline">Only {{ who }} can open it. To invite other users, an administrator has to allow it in {{ whose }} options.</p>
+  <p :else class="hint">Users you invite open {{ host() }} after signing in. Only people who already have an account here can be invited.</p>
+
+  <div :if="sub.guest_list.length" class="table-wrap">
+    <table class="table tiles">
+      <thead><tr><th>User</th><th class="hide-narrow">Invited</th><th></th></tr></thead>
+      <tbody>
+        <tr :each="guest in sub.guest_list" :key="guest.id">
+          <td class="guest-user">
+            <img :if="guest.avatar_url" class="avatar" :src="guest.avatar_url" alt="">
+            <span :else class="avatar" aria-hidden="true">{{ (guest.name || guest.email)[0] }}</span>
+            <span class="guest-text">
+              <span class="guest-name">{{ guest.name || guest.email }}</span>
+              <span :if="guest.name" class="muted small guest-email">{{ guest.email }}</span>
+            </span>
+          </td>
+          <td class="hide-narrow">{{ ago(guest.created_at) }}</td>
+          <td class="right row-actions">
+            <Button variant="ghost-danger" square icon="trash" title="Remove" :label="'Remove ' + guest.email" @click="remove(guest)" />
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p :elseif="sub.can_invite" class="empty-inline">Nobody else yet: only {{ who }} can open it.</p>
+
+  <form :if="sub.can_invite && !full && items.length" class="form-row pick-guest" @submit.prevent="add">
+    <Select name="guest" label="User to invite" :model="picked" :items="items" />
+    <Button type="submit" variant="secondary" icon="plus" :disabled="busy">Invite</Button>
+  </form>
+  <p :elseif="sub.can_invite && !full" class="hint">Every other user who may sign in can open it already. Once someone has an account here, they can be invited.</p>
+  <p :elseif="sub.can_invite" class="hint">A subdomain can be shared with at most {{ sub.guests_limit }} people: remove one to invite another.</p>
+</section>

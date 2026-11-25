@@ -25,6 +25,8 @@ type Subdomain struct {
 	// Ports counts its TCP ports, and PortsOnline those forwarded now.
 	Ports       int `json:"ports"`
 	PortsOnline int `json:"ports_online"`
+	// Guests counts who besides its owner may open it while private.
+	Guests int `json:"guests"`
 }
 
 // NewSubdomain describes d; t is its tunnel, or nil when offline.
@@ -38,6 +40,7 @@ func NewSubdomain(cfg *config.Config, d *store.Subdomain, t *tunnel.Stats) Subdo
 		CreatedAt: d.CreatedAt,
 		Tunnel:    t,
 		Ports:     d.Ports,
+		Guests:    d.Guests,
 	}
 }
 
@@ -123,11 +126,57 @@ func NewAccountKeys(keys []*store.UserKey, attached []store.Attachment) []Accoun
 	return out
 }
 
-// SubdomainDetail is a subdomain with its keys and ports.
+// Guest is an account besides its owner that may open a private
+// subdomain.
+type Guest struct {
+	ID        int64     `json:"id"`
+	UserID    int64     `json:"user_id"`
+	Email     string    `json:"email"`
+	Name      string    `json:"name"`
+	AvatarURL string    `json:"avatar_url"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// NewGuest describes g.
+func NewGuest(g *store.Guest) Guest {
+	return Guest{ID: g.ID, UserID: g.UserID, Email: g.Email, Name: g.Name, AvatarURL: g.AvatarURL, CreatedAt: g.CreatedAt}
+}
+
+// NewGuests describes guests; never nil, so it encodes as [].
+func NewGuests(guests []*store.Guest) []Guest {
+	out := make([]Guest, len(guests))
+	for i, g := range guests {
+		out[i] = NewGuest(g)
+	}
+	return out
+}
+
+// Person is an account as others see it, to pick it: no role nor limits.
+type Person struct {
+	ID        int64  `json:"id"`
+	Email     string `json:"email"`
+	Name      string `json:"name"`
+	AvatarURL string `json:"avatar_url"`
+}
+
+// NewPeople describes users; never nil, so it encodes as [].
+func NewPeople(users []*store.User) []Person {
+	out := make([]Person, len(users))
+	for i, u := range users {
+		out[i] = Person{ID: u.ID, Email: u.Email, Name: u.Name, AvatarURL: u.AvatarURL}
+	}
+	return out
+}
+
+// SubdomainDetail is a subdomain with its keys, ports and guests.
 type SubdomainDetail struct {
 	Subdomain
-	KeyList  []Key  `json:"key_list"`
-	PortList []Port `json:"port_list"`
+	KeyList   []Key   `json:"key_list"`
+	PortList  []Port  `json:"port_list"`
+	GuestList []Guest `json:"guest_list"`
+	// CanInvite says whether its owner may share it: while not, its guests
+	// can't open it.
+	CanInvite bool `json:"can_invite"`
 }
 
 // User is an account.
@@ -148,6 +197,9 @@ type User struct {
 	Providers   string    `json:"providers"`
 	LastLoginAt time.Time `json:"last_login_at"`
 	Limits      Limits    `json:"limits"`
+	// CanInvite is set when an administrator lets the user share their
+	// private subdomains; admins and owners always may.
+	CanInvite bool `json:"can_invite"`
 }
 
 // Limits are what a user may have, and which of them an administrator
@@ -178,7 +230,7 @@ func NewUser(cfg *config.Config, u store.UserSummary, l manage.Limits) User {
 		ID: u.ID, Email: u.Email, Name: u.Name, Disabled: u.Disabled,
 		Admin: role != "user", Role: role, ConfigOwner: cfg.IsAdmin(u.Email), Allowed: cfg.UserAllowed(u.Email, u.Added, string(u.Role)),
 		Subdomains: u.Subdomains, Ports: u.Ports, Passkeys: u.Passkeys, Providers: u.Providers, LastLoginAt: u.LastLoginAt,
-		Limits: NewLimits(l),
+		Limits: NewLimits(l), CanInvite: u.CanInvite,
 	}
 }
 

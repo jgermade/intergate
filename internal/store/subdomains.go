@@ -16,7 +16,8 @@ const (
 	AccessPublic Access = "public"
 	// AccessUsers requires signing in to intergate.
 	AccessUsers Access = "users"
-	// AccessPrivate only lets the subdomain owner in.
+	// AccessPrivate only lets the subdomain owner in, and the people they
+	// chose (its guests).
 	AccessPrivate Access = "private"
 )
 
@@ -36,18 +37,22 @@ type Subdomain struct {
 	CreatedAt  time.Time
 	Keys       int
 	Ports      int
+	// Guests counts the people besides its owner who may open it while it
+	// is private.
+	Guests int
 }
 
 const subdomainQuery = `
 	SELECT d.id, d.name, d.user_id, u.email, d.access, d.created_at,
 		(SELECT COUNT(*) FROM ssh_keys k WHERE k.subdomain_id = d.id),
-		(SELECT COUNT(*) FROM tcp_ports p WHERE p.subdomain_id = d.id)
+		(SELECT COUNT(*) FROM tcp_ports p WHERE p.subdomain_id = d.id),
+		(SELECT COUNT(*) FROM subdomain_guests g WHERE g.subdomain_id = d.id)
 	FROM subdomains d JOIN users u ON u.id = d.user_id `
 
 func scanSubdomain(row scanner) (*Subdomain, error) {
 	var d Subdomain
 	var created int64
-	if err := row.Scan(&d.ID, &d.Name, &d.UserID, &d.OwnerEmail, &d.Access, &created, &d.Keys, &d.Ports); err != nil {
+	if err := row.Scan(&d.ID, &d.Name, &d.UserID, &d.OwnerEmail, &d.Access, &created, &d.Keys, &d.Ports, &d.Guests); err != nil {
 		return nil, notFound(err)
 	}
 	d.CreatedAt = fromUnix(created)

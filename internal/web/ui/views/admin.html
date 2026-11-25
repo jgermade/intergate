@@ -117,11 +117,14 @@
     load()
   }
 
-  // A user's limits: how many subdomains and ports, and the ranges their
-  // ports' numbers come from. Empty fields go back to the configuration's.
+  // A user's options: whether they may invite other users to their
+  // private subdomains (admins and owners always may), and their limits:
+  // how many subdomains and ports, and the ranges their ports' numbers come
+  // from. Empty fields go back to the configuration's.
   let limitsOpen = false
   let limitsUser = null
   let limitsForm = { subdomains: "", ports: "", ranges: "" }
+  let limitsInvite = false
   let limitsError = ""
   const editLimits = user => {
     const l = user.limits
@@ -131,6 +134,7 @@
       ports: l.custom_ports ? String(l.ports) : "",
       ranges: l.custom_ranges ? l.ranges : "",
     }
+    limitsInvite = user.can_invite
     limitsError = ""
     limitsOpen = true
   }
@@ -138,11 +142,13 @@
   const saveLimits = async () => {
     limitsError = ""
     try {
-      await api("PATCH", "/admin/users/" + limitsUser.id, {
+      const change = {
         limits: { subdomains: count(limitsForm.subdomains), ports: count(limitsForm.ports), ranges: limitsForm.ranges.trim() },
-      })
+      }
+      if (limitsUser.role === "user") change.can_invite = !!limitsInvite
+      await api("PATCH", "/admin/users/" + limitsUser.id, change)
       limitsOpen = false
-      toast(`Saved the limits of ${limitsUser.email}.`)
+      toast(`Saved the options of ${limitsUser.email}.`)
       load()
     } catch (e) {
       limitsError = e.message
@@ -424,7 +430,9 @@
             <span :else class="value"><span class="role-user"><Icon name="user" /></span>User</span>
           </td>
           <td class="small hide-narrow">{{ signIn(user) }}</td>
-          <td class="hide-narrow">{{ user.subdomains }} <span class="muted small">of {{ user.limits.subdomains }}</span></td>
+          <td class="hide-narrow">{{ user.subdomains }} <span class="muted small">of {{ user.limits.subdomains }}</span>
+            <div :if="user.can_invite && user.role === 'user'" class="muted small">can invite others</div>
+          </td>
           <td :if="app.tcp" class="hide-narrow">{{ user.ports }} <span class="muted small">of {{ user.limits.ports }}</span>
             <div :if="user.limits.custom_ranges" class="muted small">{{ user.limits.ranges || "no ports in range" }}</div>
           </td>
@@ -435,7 +443,7 @@
             <span :else class="state" :class.state-off="user.disabled" role="img" :aria-label="user.disabled ? 'Disabled' : 'Enabled'" :title="user.disabled ? 'Disabled' : 'Enabled'"></span>
           </td>
           <td class="right keep">
-            <Button :if="owner || user.role !== 'owner'" variant="ghost" square icon="sliders" title="Limits" :label="'Limits of ' + user.email"
+            <Button :if="owner || user.role !== 'owner'" variant="ghost" square icon="sliders" title="Options" :label="'Options of ' + user.email"
                     @click="editLimits(user)" />
             <Button :if="canManage(user)" variant="ghost-danger" square icon="trash" title="Delete" :label="'Delete ' + user.email"
                     @click="askDelete(user)" />
@@ -607,9 +615,17 @@
   </template>
 </Modal>
 
-<Modal :open="limitsOpen" size="md" :title="'Limits of ' + (limitsUser ? limitsUser.email : '')" @close="limitsOpen = false">
+<Modal :open="limitsOpen" size="md" :title="'Options of ' + (limitsUser ? limitsUser.email : '')" @close="limitsOpen = false">
   <form id="user-limits" class="form" @submit.prevent="saveLimits">
     <Alert :if="limitsError" tone="bad" flush>{{ limitsError }}</Alert>
+    <div :if="limitsUser && limitsUser.role === 'user'" class="switch-row">
+      <Switch :model="limitsInvite" label="Can invite other users" />
+      <div>
+        <strong>Can invite other users</strong>
+        <div class="hint">To open their private subdomains: only people who already have an account here. Turning it off keeps who they invited, but doesn’t let them in.</div>
+      </div>
+    </div>
+    <p :elseif="limitsUser" class="hint">As {{ A_ROLE[limitsUser.role] }}, {{ limitsUser.id === app.user.id ? "you can always invite other users to your" : "they can always invite other users to their" }} private subdomains.</p>
     <label>Subdomains
       <input type="number" min="0" inputmode="numeric" :placeholder="app.limits.default_subdomains + ' (default)'"
              :value="limitsForm.subdomains" @input="limitsForm.subdomains = $event.target.value">
