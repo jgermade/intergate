@@ -25,6 +25,8 @@ type Subdomain struct {
 	// Ports counts its TCP ports, and PortsOnline those forwarded now.
 	Ports       int `json:"ports"`
 	PortsOnline int `json:"ports_online"`
+	// Guests counts who besides its owner may open it while private.
+	Guests int `json:"guests"`
 }
 
 // NewSubdomain describes d; t is its tunnel, or nil when offline.
@@ -38,6 +40,7 @@ func NewSubdomain(cfg *config.Config, d *store.Subdomain, t *tunnel.Stats) Subdo
 		CreatedAt: d.CreatedAt,
 		Tunnel:    t,
 		Ports:     d.Ports,
+		Guests:    d.Guests,
 	}
 }
 
@@ -123,11 +126,33 @@ func NewAccountKeys(keys []*store.UserKey, attached []store.Attachment) []Accoun
 	return out
 }
 
-// SubdomainDetail is a subdomain with its keys and ports.
+// Guest is someone besides its owner who may open a private subdomain.
+type Guest struct {
+	ID        int64     `json:"id"`
+	Email     string    `json:"email"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// NewGuest describes g.
+func NewGuest(g *store.Guest) Guest {
+	return Guest{ID: g.ID, Email: g.Email, CreatedAt: g.CreatedAt}
+}
+
+// NewGuests describes guests; never nil, so it encodes as [].
+func NewGuests(guests []*store.Guest) []Guest {
+	out := make([]Guest, len(guests))
+	for i, g := range guests {
+		out[i] = NewGuest(g)
+	}
+	return out
+}
+
+// SubdomainDetail is a subdomain with its keys, ports and guests.
 type SubdomainDetail struct {
 	Subdomain
-	KeyList  []Key  `json:"key_list"`
-	PortList []Port `json:"port_list"`
+	KeyList   []Key   `json:"key_list"`
+	PortList  []Port  `json:"port_list"`
+	GuestList []Guest `json:"guest_list"`
 }
 
 // User is an account.

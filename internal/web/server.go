@@ -295,6 +295,8 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("POST /api/subdomains/{name}/keys", user(s.handleAddKeys))
 	mux.Handle("PATCH /api/subdomains/{name}/keys/{id}", user(s.handleRenameKey))
 	mux.Handle("DELETE /api/subdomains/{name}/keys/{id}", user(s.handleDeleteKey))
+	mux.Handle("POST /api/subdomains/{name}/guests", user(s.handleAddGuest))
+	mux.Handle("DELETE /api/subdomains/{name}/guests/{id}", user(s.handleDeleteGuest))
 	mux.Handle("POST /api/subdomains/{name}/disconnect", user(s.handleDisconnect))
 	mux.Handle("POST /api/subdomains/{name}/ports", user(s.handleAddPort))
 	mux.Handle("PATCH /api/subdomains/{name}/ports/{id}", user(s.handleUpdatePort))

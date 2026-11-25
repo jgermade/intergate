@@ -1,0 +1,80 @@
+<script :setup="{ sub = null }">
+  // Who besides its owner may open a private subdomain: their emails, each
+  // with a button that removes it, and a form that adds one. Tells its page
+  // to reload with a `changed` event.
+  //
+  //   <AccessGuests :if="sub.access === 'private'" :sub="sub" @changed="load()" />
+  const [
+    { app, toast },
+    { api },
+    { ago },
+    Badge,
+    Button,
+  ] = await C79.importAll([
+    "@ui/lib/store.js",
+    "@ui/lib/api.js",
+    "@ui/lib/format.js",
+    "@theme/components/badge.html",
+    "@theme/components/button.html",
+  ])
+
+  const path = () => "/subdomains/" + encodeURIComponent(sub.name) + "/guests"
+  const host = () => sub.name + "." + app.domain
+
+  let email = ""
+  let busy = false
+  $: full = sub.guest_list.length >= sub.guests_limit
+
+  const add = async () => {
+    busy = true
+    try {
+      const guest = await api("POST", path(), { email: email.trim() })
+      email = ""
+      toast(`${guest.email} can open ${host()}.`)
+      $emit("changed")
+    } catch (e) {
+      toast(e.message, "error")
+    }
+    busy = false
+  }
+
+  const remove = async guest => {
+    if (!confirm(`Stop ${guest.email} from opening ${host()}? It takes effect on their next request.`)) return
+    try {
+      await api("DELETE", `${path()}/${guest.id}`)
+      toast(`${guest.email} can no longer open ${host()}.`)
+    } catch (e) {
+      toast(e.message, "error")
+    }
+    $emit("changed")
+  }
+</script>
+
+<section class="guests" aria-label="Who else can open it">
+  <div class="guests-head">
+    <h3>Who else can open it</h3>
+    <Badge>{{ sub.guest_list.length }} of {{ sub.guests_limit }}</Badge>
+  </div>
+  <p class="hint">They open {{ host() }} after signing in to intergate with this email. It doesn’t let anyone sign in who otherwise couldn’t: if they can’t, an administrator adds them as a user.</p>
+  <div :if="sub.guest_list.length" class="table-wrap">
+    <table class="table tiles">
+      <thead><tr><th>Email</th><th class="hide-narrow">Added</th><th></th></tr></thead>
+      <tbody>
+        <tr :each="guest in sub.guest_list" :key="guest.id">
+          <td class="guest-email">{{ guest.email }}</td>
+          <td class="hide-narrow">{{ ago(guest.created_at) }}</td>
+          <td class="right row-actions">
+            <Button variant="ghost-danger" square icon="trash" title="Remove" :label="'Remove ' + guest.email" @click="remove(guest)" />
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p :else class="empty-inline">Nobody else yet: only {{ sub.mine ? "you" : sub.owner }} can open it.</p>
+  <form :if="!full" class="form-row" @submit.prevent="add">
+    <input type="email" name="guest-email" required maxlength="254" autocomplete="off" spellcheck="false" autocapitalize="off"
+           placeholder="name@example.com" aria-label="Email of someone else who may open it" :value="email" @input="email = $event.target.value">
+    <Button type="submit" variant="secondary" icon="plus" :disabled="busy || !email.trim()">Add</Button>
+  </form>
+  <p :else class="hint">A subdomain can be shared with at most {{ sub.guests_limit }} people: remove one to add another.</p>
+</section>

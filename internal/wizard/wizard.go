@@ -578,7 +578,7 @@ func accessOptions() []huh.Option[store.Access] {
 	return []huh.Option[store.Access]{
 		huh.NewOption("Public: anyone with the URL", store.AccessPublic),
 		huh.NewOption("Signed-in users: anyone who can sign in to this intergate", store.AccessUsers),
-		huh.NewOption("Private: only the owner, after signing in", store.AccessPrivate),
+		huh.NewOption("Private: only the owner and the people they choose, after signing in", store.AccessPrivate),
 	}
 }
 
@@ -691,6 +691,17 @@ func (w *Wizard) subdomain(c *admin.Client, name string) error {
 		} else {
 			w.printf("  ○ offline\n")
 		}
+		if sd.Access == store.AccessPrivate {
+			if len(sd.GuestList) == 0 {
+				w.printf("  Only %s can open it.\n", sd.Owner)
+			} else {
+				w.printf("  Also open to:")
+				for _, g := range sd.GuestList {
+					w.printf(" %s", g.Email)
+				}
+				w.printf("\n")
+			}
+		}
 		if len(sd.KeyList) == 0 {
 			w.printf("  No SSH keys: nobody can connect.\n")
 		}
@@ -712,6 +723,12 @@ func (w *Wizard) subdomain(c *admin.Client, name string) error {
 			opts = append(opts, huh.NewOption("Add a key from "+sd.Owner+"'s account", "accountkey"))
 		}
 		opts = append(opts, huh.NewOption("Change who can open it", "access"))
+		if sd.Access == store.AccessPrivate {
+			opts = append(opts, huh.NewOption("Let someone else open it", "addguest"))
+		}
+		if sd.Access == store.AccessPrivate && len(sd.GuestList) > 0 {
+			opts = append(opts, huh.NewOption("Stop someone from opening it", "rmguest"))
+		}
 		if len(sd.KeyList) > 0 {
 			opts = append(opts, huh.NewOption("Remove an SSH key", "rmkey"))
 		}
@@ -738,6 +755,10 @@ func (w *Wizard) subdomain(c *admin.Client, name string) error {
 					w.printf("✔ Access set to %s.\n", access)
 				}
 			}
+		case "addguest":
+			err = w.addGuest(c, sd)
+		case "rmguest":
+			err = w.removeGuest(c, sd)
 		case "rmkey":
 			err = w.removeKey(c, sd)
 		case "disconnect":
@@ -825,6 +846,40 @@ func (w *Wizard) removeKey(c *admin.Client, sd *admin.SubdomainDetail) error {
 		return err
 	}
 	w.printf("✔ Key removed.\n")
+	return nil
+}
+
+func (w *Wizard) addGuest(c *admin.Client, sd *admin.SubdomainDetail) error {
+	var email string
+	err := w.form(huh.NewGroup(huh.NewInput().Title("Email").
+		Description("They open " + sd.Name + " after signing in with it, if they may sign in to this intergate.").
+		Validate(required("an email")).Value(&email)).Title("Let someone else open " + sd.Name))
+	if err != nil {
+		return err
+	}
+	g, err := c.AddGuest(w.ctx, sd.Name, email)
+	if err != nil {
+		return err
+	}
+	w.printf("✔ %s can open it.\n", g.Email)
+	return nil
+}
+
+func (w *Wizard) removeGuest(c *admin.Client, sd *admin.SubdomainDetail) error {
+	opts := make([]huh.Option[int64], 0, len(sd.GuestList)+1)
+	for _, g := range sd.GuestList {
+		opts = append(opts, huh.NewOption(g.Email, g.ID))
+	}
+	opts = append(opts, huh.NewOption("← Cancel", int64(0)))
+	id := sd.GuestList[0].ID
+	if err := w.form(huh.NewGroup(huh.NewSelect[int64]().Title("Who should no longer open " + sd.Name + "?").
+		Description("From their next request on.").Options(opts...).Value(&id))); err != nil || id == 0 {
+		return err
+	}
+	if err := c.RemoveGuest(w.ctx, sd.Name, id); err != nil {
+		return err
+	}
+	w.printf("✔ Removed.\n")
 	return nil
 }
 

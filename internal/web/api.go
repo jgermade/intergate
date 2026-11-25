@@ -163,6 +163,11 @@ func (s *Server) handleSubdomain(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "port quota", err)
 		return
 	}
+	guests, err := s.store.GuestsBySubdomain(r.Context(), d.ID)
+	if err != nil {
+		s.internalError(w, "list guests", err)
+		return
+	}
 	portList := make([]api.Port, len(list))
 	for i, p := range list {
 		portList[i] = api.NewPort(s.cfg, p, s.manage.PortStats(p.Port))
@@ -178,17 +183,21 @@ func (s *Server) handleSubdomain(w http.ResponseWriter, r *http.Request) {
 		// ClientIP is the address the dashboard sees, to fill in allow lists.
 		ClientIP string `json:"client_ip"`
 		Mine     bool   `json:"mine"`
+		// GuestsLimit is how many people a private subdomain can be shared
+		// with.
+		GuestsLimit int `json:"guests_limit"`
 		// PortQuota is how many ports the subdomain's owner has, across
 		// their subdomains, and may have.
 		PortQuota portQuota `json:"port_quota"`
 	}{
-		SubdomainDetail:      api.SubdomainDetail{Subdomain: s.view(d), KeyList: api.NewKeys(keys), PortList: portList},
+		SubdomainDetail:      api.SubdomainDetail{Subdomain: s.view(d), KeyList: api.NewKeys(keys), PortList: portList, GuestList: api.NewGuests(guests)},
 		SSHCommand:           s.sshCommand(d.Name),
 		PortsCommand:         s.portsCommand(d.Name, list),
 		TunnelCommand:        s.tunnelCommand(d.Name, list, false),
 		TunnelCommandWindows: s.tunnelCommand(d.Name, list, true),
 		ClientIP:             s.clientIP(r),
 		Mine:                 d.UserID == currentAuth(r).User.ID,
+		GuestsLimit:          manage.GuestsPerSubdomain,
 		PortQuota:            quota,
 	})
 }
@@ -302,6 +311,38 @@ func (s *Server) handleDeleteKey(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if _, err := s.manage.RemoveKey(r.Context(), d, id, currentAuth(r).User.Email); err != nil {
 		s.fail(w, "delete key", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleAddGuest(w http.ResponseWriter, r *http.Request) {
+	d := s.loadSubdomain(w, r)
+	if d == nil {
+		return
+	}
+	var req struct {
+		Email string `json:"email"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	g, err := s.manage.AddGuest(r.Context(), d, req.Email, currentAuth(r).User.Email)
+	if err != nil {
+		s.fail(w, "add guest", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, api.NewGuest(g))
+}
+
+func (s *Server) handleDeleteGuest(w http.ResponseWriter, r *http.Request) {
+	d := s.loadSubdomain(w, r)
+	if d == nil {
+		return
+	}
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if _, err := s.manage.RemoveGuest(r.Context(), d, id, currentAuth(r).User.Email); err != nil {
+		s.fail(w, "remove guest", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

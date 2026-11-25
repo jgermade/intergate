@@ -315,6 +315,14 @@ select.role {
 div.allow { display: grid; gap: var(--ig-space-3); }
 div.allow .hint { margin: 0; }
 
+/* Who else can open a private subdomain, under its access choice. */
+.guests { display: grid; gap: var(--ig-space-4); margin-top: var(--ig-space-7); padding-top: var(--ig-space-7); border-top: var(--ig-hairline) solid var(--ig-line); }
+.guests-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ig-space-4); }
+.guests-head h3 { margin: 0; font-size: var(--ig-text-md); }
+.guests .hint { margin: 0; }
+.guests .empty-inline { margin: 0; }
+.guest-email { overflow-wrap: anywhere; }
+
 .command-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem .75rem; flex-wrap: wrap; }
 .command-head p { margin: 0; flex: 1 1 17.5rem; }
 

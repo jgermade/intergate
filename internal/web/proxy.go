@@ -129,7 +129,7 @@ func (s *Server) serveTunnel(w http.ResponseWriter, r *http.Request, name string
 			http.Redirect(w, r, s.cfg.DashboardURL("/tunnel-auth?rd="+url.QueryEscape(rd)), http.StatusFound)
 			return
 		}
-		if !canAccess(access, t.OwnerID, user) {
+		if !s.mayOpen(r.Context(), t, access, user) {
 			// Whoever may not open it doesn't learn that it is online.
 			s.renderOffline(w, name)
 			return
@@ -150,12 +150,23 @@ func (s *Server) renderOffline(w http.ResponseWriter, name string) {
 		"Nobody is connected to "+s.cfg.TunnelHost(name)+" right now.")
 }
 
-func canAccess(access store.Access, ownerID int64, user *store.User) bool {
+// mayOpen reports whether a signed-in user may open a tunnel with this
+// access: anyone for "users"; for "private", its owner and the people
+// they chose. Guests are looked up on each request, so removing one, like
+// changing the access, takes effect at once.
+func (s *Server) mayOpen(ctx context.Context, t *tunnel.Tunnel, access store.Access, user *store.User) bool {
 	switch access {
 	case store.AccessPublic, store.AccessUsers:
 		return true
 	case store.AccessPrivate:
-		return user.ID == ownerID
+		if user.ID == t.OwnerID {
+			return true
+		}
+		ok, err := s.store.IsGuest(ctx, t.SubdomainID, user.Email)
+		if err != nil {
+			s.log.Error("check guest", "subdomain", t.Subdomain, "err", err)
+		}
+		return ok
 	}
 	return false
 }

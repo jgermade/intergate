@@ -72,6 +72,7 @@ type (
 	User            = api.User
 	KeysResult      = api.KeysResult
 	AccountKey      = api.AccountKey
+	Guest           = api.Guest
 )
 
 // CreateSubdomainRequest registers a subdomain for Owner (created if new).
@@ -120,6 +121,8 @@ func NewHandler(cfg *config.Config, st *store.Store, svc *manage.Service, set *s
 	h.mux.HandleFunc("POST /v1/subdomains", h.createSubdomain)
 	h.mux.HandleFunc("GET /v1/subdomains/{name}", h.getSubdomain)
 	h.mux.HandleFunc("POST /v1/subdomains/{name}/access", h.setAccess)
+	h.mux.HandleFunc("POST /v1/subdomains/{name}/guests", h.addGuest)
+	h.mux.HandleFunc("DELETE /v1/subdomains/{name}/guests/{id}", h.removeGuest)
 	h.mux.HandleFunc("POST /v1/subdomains/{name}/keys", h.addKeys)
 	h.mux.HandleFunc("DELETE /v1/subdomains/{name}/keys/{id}", h.removeKey)
 	h.mux.HandleFunc("POST /v1/subdomains/{name}/disconnect", h.disconnect)
@@ -269,7 +272,12 @@ func (h *Handler) getSubdomain(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, SubdomainDetail{Subdomain: h.subdomain(d), KeyList: api.NewKeys(keys)})
+	guests, err := h.store.GuestsBySubdomain(r.Context(), d.ID)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, SubdomainDetail{Subdomain: h.subdomain(d), KeyList: api.NewKeys(keys), GuestList: api.NewGuests(guests)})
 }
 
 func (h *Handler) createSubdomain(w http.ResponseWriter, r *http.Request) {
@@ -386,6 +394,39 @@ func (h *Handler) removeKey(w http.ResponseWriter, r *http.Request) {
 	}
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if _, err := h.manage.RemoveKey(r.Context(), d, id, actor); err != nil {
+		h.fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) addGuest(w http.ResponseWriter, r *http.Request) {
+	d := h.load(w, r)
+	if d == nil {
+		return
+	}
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := decode(r, &req); err != nil {
+		h.fail(w, err)
+		return
+	}
+	g, err := h.manage.AddGuest(r.Context(), d, req.Email, actor)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, api.NewGuest(g))
+}
+
+func (h *Handler) removeGuest(w http.ResponseWriter, r *http.Request) {
+	d := h.load(w, r)
+	if d == nil {
+		return
+	}
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if _, err := h.manage.RemoveGuest(r.Context(), d, id, actor); err != nil {
 		h.fail(w, err)
 		return
 	}

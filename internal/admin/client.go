@@ -113,6 +113,17 @@ func (c *Client) SetAccess(ctx context.Context, name string, access store.Access
 	return c.do(ctx, http.MethodPost, "/v1/subdomains/"+url.PathEscape(name)+"/access", map[string]store.Access{"access": access}, nil)
 }
 
+// AddGuest lets someone besides its owner open a private subdomain.
+func (c *Client) AddGuest(ctx context.Context, name, email string) (*Guest, error) {
+	var out Guest
+	return &out, c.do(ctx, http.MethodPost, "/v1/subdomains/"+url.PathEscape(name)+"/guests", map[string]string{"email": email}, &out)
+}
+
+// RemoveGuest stops a guest from opening a private subdomain.
+func (c *Client) RemoveGuest(ctx context.Context, name string, id int64) error {
+	return c.do(ctx, http.MethodDelete, fmt.Sprintf("/v1/subdomains/%s/guests/%d", url.PathEscape(name), id), nil, nil)
+}
+
 // AddKeys authorizes SSH keys on a subdomain.
 func (c *Client) AddKeys(ctx context.Context, name string, req KeysRequest) (KeysResult, error) {
 	var out KeysResult

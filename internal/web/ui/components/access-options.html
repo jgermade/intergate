@@ -8,7 +8,7 @@
   const OPTIONS = [
     { value: "public", label: "Public", hint: "Anyone with the URL", hue: "blue", icon: "globe" },
     { value: "users", label: "Signed-in users", hint: "Anyone who can sign in to this intergate", hue: "orange", icon: "users" },
-    { value: "private", label: "Private", hint: "Only the owner, after signing in", hue: "pink", icon: "lock" },
+    { value: "private", label: "Private", hint: "Only the owner and people they choose", hue: "pink", icon: "lock" },
   ]
   const pick = value => {
     $updateModel(value)
