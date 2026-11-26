@@ -125,3 +125,24 @@ func (s *Service) SetUserCanInvite(ctx context.Context, userID int64, can bool, 
 	s.log.Info("user updated", "user_id", userID, "can_invite", can, "by", actor)
 	return nil
 }
+
+// SharedWith lists the subdomains u was invited to and may open now: those
+// of owners who may sign in, and, while private, may invite.
+func (s *Service) SharedWith(ctx context.Context, u *store.User) ([]store.Invitation, error) {
+	list, err := s.store.InvitationsFor(ctx, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	out := list[:0]
+	for _, in := range list {
+		o := &in.Owner
+		if !s.cfg.UserAllowed(o.Email, o.Added, string(o.Role)) {
+			continue
+		}
+		if in.Access == store.AccessPrivate && !s.MayInvite(o) {
+			continue
+		}
+		out = append(out, in)
+	}
+	return out, nil
+}

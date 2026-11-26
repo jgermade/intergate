@@ -199,3 +199,65 @@ func TestPrivateGuests(t *testing.T) {
 		t.Errorf("admin invites to their own: %d %s", resp.StatusCode, body)
 	}
 }
+
+// The dashboard lists the subdomains a user was invited to, while the
+// invitation lets them in.
+func TestSharedWithYou(t *testing.T) {
+	h := newHarness(t)
+	ctx := t.Context()
+	alice, _, key := h.setup("alice@example.com", "secret", store.AccessPrivate)
+	carol, _, _ := h.setup("carol@example.com", "notes", store.AccessPrivate)
+	h.setup("dan@example.com", "idle", store.AccessPrivate)
+	h.store.SetUserCanInvite(ctx, alice.ID, true)
+	h.store.SetUserCanInvite(ctx, carol.ID, true)
+	bob := h.browser(true)
+	h.login(bob, "bob@example.com")
+	bobUser, _ := h.store.UserByEmail(ctx, "bob@example.com")
+	for _, name := range []string{"secret", "notes"} {
+		d, _ := h.store.SubdomainByName(ctx, name)
+		if _, err := h.store.AddGuest(ctx, d.ID, bobUser.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c, err := h.dial(key, "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.forward(t, "secret", 80, backend(t))
+
+	shared := func() string {
+		t.Helper()
+		resp, body := call(t, bob, "GET", "/api/shared", nil)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("shared: %d %s", resp.StatusCode, body)
+		}
+		var out []string
+		for _, s := range decode[[]api.Shared](t, body) {
+			out = append(out, fmt.Sprintf("%s:%s:%s:%v", s.Name, s.Owner, s.Access, s.Online))
+		}
+		return fmt.Sprint(out)
+	}
+	if got := shared(); got != "[notes:carol@example.com:private:false secret:alice@example.com:private:true]" {
+		t.Fatalf("shared = %s", got)
+	}
+	// Not while the owner may not invite; again once they may, or once it
+	// is open to signed-in users anyway.
+	h.store.SetUserCanInvite(ctx, carol.ID, false)
+	if got := shared(); got != "[secret:alice@example.com:private:true]" {
+		t.Errorf("carol may not invite: %s", got)
+	}
+	notes, _ := h.store.SubdomainByName(ctx, "notes")
+	h.store.SetSubdomainAccess(ctx, notes.ID, store.AccessUsers)
+	if got := shared(); got != "[notes:carol@example.com:users:false secret:alice@example.com:private:true]" {
+		t.Errorf("notes open to users: %s", got)
+	}
+	// Nor those of disabled owners.
+	h.store.SetUserDisabled(ctx, carol.ID, true)
+	if got := shared(); got != "[secret:alice@example.com:private:true]" {
+		t.Errorf("carol disabled: %s", got)
+	}
+	// Someone invited nowhere gets an empty list, not null.
+	if _, body := call(t, h.loggedIn("eve@example.com"), "GET", "/api/shared", nil); strings.TrimSpace(body) != "[]" {
+		t.Errorf("eve: %s", body)
+	}
+}

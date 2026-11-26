@@ -288,6 +288,7 @@ func (s *Server) routes() http.Handler {
 		mux.Handle("DELETE /api/account/passkeys/{id}", user(s.handleDeletePasskey))
 	}
 	mux.Handle("GET /api/subdomains", user(s.handleListSubdomains))
+	mux.Handle("GET /api/shared", user(s.handleShared))
 	mux.Handle("POST /api/subdomains", user(s.handleCreateSubdomain))
 	mux.Handle("GET /api/subdomains/{name}", user(s.handleSubdomain))
 	mux.Handle("PATCH /api/subdomains/{name}", user(s.handleUpdateSubdomain))

@@ -57,6 +57,14 @@ func TestGuests(t *testing.T) {
 		t.Errorf("GuestCandidates(app) = %v", list)
 	}
 
+	// What ana was invited to, with its owner.
+	if list, err := s.InvitationsFor(ctx, ana.ID); err != nil || len(list) != 1 || list[0].Subdomain != "app" || list[0].Owner.Email != "owner@x.com" || !list[0].Owner.CanInvite || list[0].InvitedAt.IsZero() {
+		t.Errorf("InvitationsFor(ana) = %+v, %v", list, err)
+	}
+	if list, _ := s.InvitationsFor(ctx, cy.ID); len(list) != 0 {
+		t.Errorf("InvitationsFor(cy) = %+v", list)
+	}
+
 	// A rename keeps them; they go with the subdomain, or their account.
 	if err := s.RenameSubdomain(ctx, d.ID, "web"); err != nil {
 		t.Fatal(err)

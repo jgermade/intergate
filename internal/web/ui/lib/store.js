@@ -25,7 +25,7 @@ export const app = $reactive({
 // it opens. A link anywhere else (an OAuth provider, a tunnel) is an
 // ordinary navigation.
 const PAGES = [
-  [/^\/$/, () => ({ page: "subdomains", data: ["/subdomains"] })],
+  [/^\/$/, () => ({ page: "subdomains", data: ["/subdomains", "/shared"] })],
   [/^\/subdomains\/([^/]+)$/, m => {
     const name = decodeURIComponent(m[1])
     return { page: "subdomain", name, data: ["/subdomains/" + encodeURIComponent(name)] }

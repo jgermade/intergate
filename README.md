@@ -27,7 +27,8 @@ ssh -p 2222 -R myapp:80:localhost:3000 gate.example.com
   provider can be added as optional sign-in methods.
 - **Access control per subdomain:** *public*, *signed-in users* or *private*
   (the owner, and other users they invite, if an administrator lets them:
-  **Admin → Users →** a user's options). Protected tunnels send visitors to
+  **Admin → Users →** a user's options; invited users find them in their
+  dashboard, under *Shared with you*). Protected tunnels send visitors to
   sign in and work with any app behind them; the app never sees
   intergate's cookies.
 - **Live view** of every tunnel: client address, key, requests and traffic,

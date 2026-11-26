@@ -116,3 +116,41 @@ func (s *Store) GuestCandidates(ctx context.Context, subdomainID int64) ([]*User
 	}
 	return out, rows.Err()
 }
+
+// Invitation is a subdomain a user was invited to open, with what decides
+// whether the invitation lets them in now.
+type Invitation struct {
+	SubdomainID int64
+	Subdomain   string
+	Access      Access
+	Owner       User
+	InvitedAt   time.Time
+}
+
+// InvitationsFor lists the subdomains userID was invited to, by name,
+// leaving out those of disabled owners.
+func (s *Store) InvitationsFor(ctx context.Context, userID int64) ([]Invitation, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT d.id, d.name, d.access, u.id, u.email, u.name, u.added, u.role, u.can_invite, g.created_at
+		FROM subdomain_guests g
+		JOIN subdomains d ON d.id = g.subdomain_id
+		JOIN users u ON u.id = d.user_id
+		WHERE g.user_id = ? AND u.disabled = 0
+		ORDER BY d.name`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Invitation
+	for rows.Next() {
+		var in Invitation
+		var invited int64
+		o := &in.Owner
+		if err := rows.Scan(&in.SubdomainID, &in.Subdomain, &in.Access, &o.ID, &o.Email, &o.Name, &o.Added, &o.Role, &o.CanInvite, &invited); err != nil {
+			return nil, err
+		}
+		in.InvitedAt = fromUnix(invited)
+		out = append(out, in)
+	}
+	return out, rows.Err()
+}
