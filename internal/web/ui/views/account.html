@@ -216,7 +216,6 @@
 <Card title="Profile">
   <Facts columns="3" :items="profile" />
 </Card>
-<div class="card-actions"><Button variant="secondary" @click="signingOut = true">Sign out</Button></div>
 </div>
 
 <div :elseif="tab === 'keys'" role="tabpanel" aria-label="SSH keys">
@@ -278,7 +277,10 @@
 
 <div :elseif="tab === 'passkeys'" role="tabpanel" aria-label="Passkeys">
 <Card title="Passkeys">
-  <template :slot.aside><Badge>{{ passkeys.length }}</Badge></template>
+  <template :slot.aside>
+    <Badge>{{ passkeys.length }}</Badge>
+    <Button variant="secondary" size="sm" icon="plus" :disabled="!supported" @click="startAddPasskey">Add a passkey</Button>
+  </template>
   <p class="muted intro">Sign in without email codes. Each device or password manager has its own passkey.</p>
   <div :if="passkeys.length" class="table-wrap">
     <table class="table">
@@ -307,8 +309,9 @@
   <p :else class="empty-inline">No passkeys yet.</p>
   <p :if="!supported" class="muted small">This browser does not support passkeys.</p>
 </Card>
-<div class="card-actions"><Button variant="secondary" icon="plus" :disabled="!supported" @click="startAddPasskey">Add a passkey</Button></div>
 </div>
+
+<div class="card-actions"><Button variant="secondary" @click="signingOut = true">Sign out</Button></div>
 
 <Modal :open="addingPasskey" size="md" title="Add a passkey" @close="stopAddPasskey">
   <form id="add-passkey" class="form" @submit.prevent="addPasskey">
