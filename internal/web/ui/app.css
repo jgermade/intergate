@@ -366,6 +366,9 @@ legend .hint { display: block; margin-top: 0; }
 .pick-key, .pick-guest { flex-wrap: nowrap; align-items: stretch; }
 :is(.pick-key, .pick-guest) > [data-c79-box]:first-child > * { flex: 1 1 0; min-width: 0; }
 :is(.pick-key, .pick-guest) > [data-c79-box]:last-child > * { flex: none; }
+/* A passkey: what keeps it, as an icon, beside its name. */
+.passkey-name { display: flex; align-items: center; gap: var(--ig-space-3); }
+.passkey-icon { display: grid; place-items: center; flex: none; width: 2rem; height: 2rem; border-radius: var(--ig-radius-md); background: var(--ig-fill); color: var(--ig-fg-muted); }
 .key-subdomains { display: flex; flex-wrap: wrap; gap: .125rem .625rem; }
 /* The page's own actions, centred under its cards: outside any tab, so they
    show on every tab (Sign out). What adds to a card's list goes in the

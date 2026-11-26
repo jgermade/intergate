@@ -121,18 +121,19 @@ func TestPasskeys(t *testing.T) {
 	s := openTest(t)
 	u, _ := s.CreateUser(ctx, "a@x.com", "")
 	other, _ := s.CreateUser(ctx, "b@x.com", "")
-	p, err := s.AddPasskey(ctx, u.ID, "laptop", []byte("cred-1"), []byte(`{"v":1}`))
+	p, err := s.AddPasskey(ctx, u.ID, "laptop", []byte("cred-1"), []byte(`{"v":1}`), "Chrome on macOS")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.AddPasskey(ctx, other.ID, "dup", []byte("cred-1"), []byte("{}")); !errors.Is(err, ErrConflict) {
+	if _, err := s.AddPasskey(ctx, other.ID, "dup", []byte("cred-1"), []byte("{}"), ""); !errors.Is(err, ErrConflict) {
 		t.Fatalf("duplicate credential: %v", err)
 	}
-	if err := s.UpdatePasskeyUse(ctx, []byte("cred-1"), []byte(`{"v":2}`)); err != nil {
+	if err := s.UpdatePasskeyUse(ctx, []byte("cred-1"), []byte(`{"v":2}`), "Safari on iOS"); err != nil {
 		t.Fatal(err)
 	}
 	list, err := s.PasskeysByUser(ctx, u.ID)
-	if err != nil || len(list) != 1 || string(list[0].Credential) != `{"v":2}` || list[0].LastUsedAt.IsZero() {
+	if err != nil || len(list) != 1 || string(list[0].Credential) != `{"v":2}` || list[0].LastUsedAt.IsZero() ||
+		list[0].AddedFrom != "Chrome on macOS" || list[0].UsedFrom != "Safari on iOS" {
 		t.Fatalf("PasskeysByUser = %+v, %v", list, err)
 	}
 	if err := s.RenamePasskey(ctx, other.ID, p.ID, "stolen"); !errors.Is(err, ErrNotFound) {

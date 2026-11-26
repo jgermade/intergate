@@ -163,7 +163,7 @@ func TestPasskeys(t *testing.T) {
 	b := h.browser(true)
 	h.emailLogin(b, "alice@example.com", "/")
 	h.registerPasskey(b, a)
-	if _, body := call(t, b, "GET", "/api/account", nil); !strings.Contains(body, `"name":"Test key"`) {
+	if _, body := call(t, b, "GET", "/api/account", nil); !strings.Contains(body, `"name":"Test key"`) || !strings.Contains(body, `"kind":"`) {
 		t.Fatalf("account after registering: %s", body)
 	}
 	// With a passkey, signing in no longer suggests adding one.

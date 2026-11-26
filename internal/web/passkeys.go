@@ -108,7 +108,7 @@ func (s *Server) handlePasskeyLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	user := wu.(*passkeyUser).user
 	if data, err := json.Marshal(cred); err == nil {
-		if err := s.store.UpdatePasskeyUse(r.Context(), cred.ID, data); err != nil {
+		if err := s.store.UpdatePasskeyUse(r.Context(), cred.ID, data, deviceOf(r.UserAgent())); err != nil {
 			s.log.Error("update passkey", "err", err)
 		}
 	}
@@ -166,16 +166,25 @@ func (s *Server) handlePasskeyRegister(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusBadRequest, "The passkey could not be verified. Please try again.")
 		return
 	}
-	name := passkeyName(r.URL.Query().Get("name"))
-	if name == "" {
-		name = "Passkey added " + time.Now().UTC().Format("2006-01-02")
-	}
 	data, err := json.Marshal(cred)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, msgInternal)
 		return
 	}
-	pk, err := s.store.AddPasskey(r.Context(), a.User.ID, name, cred.ID, data)
+	// Without a name, it is called after what keeps it, or else where it
+	// was added from.
+	from := deviceOf(r.UserAgent())
+	name := passkeyName(r.URL.Query().Get("name"))
+	if name == "" {
+		name = describePasskey(data).Provider
+	}
+	if name == "" {
+		name = from
+	}
+	if name == "" {
+		name = "Passkey added " + time.Now().UTC().Format("2006-01-02")
+	}
+	pk, err := s.store.AddPasskey(r.Context(), a.User.ID, name, cred.ID, data, from)
 	if errors.Is(err, store.ErrConflict) {
 		jsonError(w, http.StatusConflict, "This passkey is already registered.")
 		return

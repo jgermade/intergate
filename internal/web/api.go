@@ -473,10 +473,15 @@ type passkey struct {
 	Name       string    `json:"name"`
 	CreatedAt  time.Time `json:"created_at"`
 	LastUsedAt time.Time `json:"last_used_at"`
+	// AddedFrom and UsedFrom are the browser and system it was added and
+	// last used from: "Chrome on macOS".
+	AddedFrom string `json:"added_from"`
+	UsedFrom  string `json:"used_from"`
+	passkeyInfo
 }
 
 func passkeyView(p *store.Passkey) passkey {
-	return passkey{p.ID, p.Name, p.CreatedAt, p.LastUsedAt}
+	return passkey{p.ID, p.Name, p.CreatedAt, p.LastUsedAt, p.AddedFrom, p.UsedFrom, describePasskey(p.Credential)}
 }
 
 func (s *Server) handleAccount(w http.ResponseWriter, r *http.Request) {
