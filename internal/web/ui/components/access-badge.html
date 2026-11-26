@@ -1,6 +1,6 @@
 <script :setup="{ access = 'public', guests = 0 }">
   // Who can open a subdomain, as a badge in its colour. A private one shared
-  // with others says with how many: `private +3 👤`.
+  // with others says with how many: `private +3`, then the `user` icon.
   //
   //   <AccessBadge :access="sub.access" :guests="sub.guests" />
   const [Badge, Icon] = await C79.importAll([
