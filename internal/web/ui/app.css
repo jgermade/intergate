@@ -367,7 +367,9 @@ legend .hint { display: block; margin-top: 0; }
 :is(.pick-key, .pick-guest) > [data-c79-box]:first-child > * { flex: 1 1 0; min-width: 0; }
 :is(.pick-key, .pick-guest) > [data-c79-box]:last-child > * { flex: none; }
 .key-subdomains { display: flex; flex-wrap: wrap; gap: .125rem .625rem; }
-/* What adds to the list in the card above it, centred under it. */
+/* The page's own actions, centred under its cards: outside any tab, so they
+   show on every tab (Sign out). What adds to a card's list goes in the
+   card's head instead. */
 .card-actions { display: flex; justify-content: center; gap: var(--ig-space-4); }
 
 input:not([type=radio]):not([type=checkbox]), textarea {
