@@ -151,6 +151,26 @@ func NewGuests(guests []*store.Guest) []Guest {
 	return out
 }
 
+// Shared is a subdomain someone else invited the user to open, as that
+// user sees it: no keys, ports nor tunnel details.
+type Shared struct {
+	Name      string       `json:"name"`
+	URL       string       `json:"url"`
+	Owner     string       `json:"owner"`
+	OwnerName string       `json:"owner_name"`
+	Access    store.Access `json:"access"`
+	Online    bool         `json:"online"`
+	InvitedAt time.Time    `json:"invited_at"`
+}
+
+// NewShared describes in; online says whether its tunnel is up.
+func NewShared(cfg *config.Config, in store.Invitation, online bool) Shared {
+	return Shared{
+		Name: in.Subdomain, URL: cfg.TunnelURL(in.Subdomain), Owner: in.Owner.Email, OwnerName: in.Owner.Name,
+		Access: in.Access, Online: online, InvitedAt: in.InvitedAt,
+	}
+}
+
 // Person is an account as others see it, to pick it: no role nor limits.
 type Person struct {
 	ID        int64  `json:"id"`

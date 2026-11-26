@@ -1,5 +1,6 @@
 <script :setup>
-  // The signed-in user's subdomains, and the form that registers one.
+  // The signed-in user's subdomains, the form that registers one, and the
+  // subdomains others invited them to open.
   const [
     { app },
     { api },
@@ -31,10 +32,14 @@
   document.title = "Subdomains · intergate"
 
   let subdomains = []
+  // Others' subdomains the user was invited to, and may open now.
+  let shared = []
   let loadError = ""
   const load = async () => {
     try {
-      subdomains = await api("GET", "/subdomains")
+      const [own, others] = await Promise.all([api("GET", "/subdomains"), api("GET", "/shared")])
+      subdomains = own
+      shared = others
       loadError = ""
     } catch (e) {
       loadError = e.message
@@ -98,6 +103,34 @@
   <div class="empty">
     <span class="empty-icon"><Icon name="globe" size="2xl" weight="thin" /></span>
     <p>No subdomains yet. Register one with your SSH public key, then connect with <code>ssh -R</code>.</p>
+  </div>
+</Card>
+
+<Card :if="shared.length" title="Shared with you">
+  <p class="muted intro">Other users invited you to open these, signed in as you are here.</p>
+  <div class="table-wrap">
+    <table class="table tiles">
+      <thead class="hide-narrow"><tr><th>Subdomain</th><th>Status</th><th>Owner</th><th>Invited</th><th></th></tr></thead>
+      <tbody>
+        <tr :each="sub in shared" :key="sub.name">
+          <td>
+            <a class="name-cell" :href="sub.url" target="_blank" rel="noopener noreferrer">
+              <span class="host"><strong>{{ sub.name }}</strong><span class="muted">.{{ app.domain }}</span></span>
+            </a>
+            <div class="row-badges hide-wide"><StatusBadge :tunnel="sub.online" /><span class="muted small">{{ sub.owner_name || sub.owner }}</span></div>
+          </td>
+          <td class="hide-narrow"><StatusBadge :tunnel="sub.online" /></td>
+          <td class="hide-narrow">
+            <span :if="sub.owner_name">{{ sub.owner_name }}<div class="muted small">{{ sub.owner }}</div></span>
+            <span :else>{{ sub.owner }}</span>
+          </td>
+          <td class="hide-narrow">{{ ago(sub.invited_at) }}</td>
+          <td class="right row-actions">
+            <Button variant="ghost" square icon="external" title="Open" :label="'Open ' + sub.url" :href="sub.url" target="_blank" />
+          </td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 </Card>
 

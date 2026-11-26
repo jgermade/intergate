@@ -87,6 +87,21 @@ func (s *Server) handleListSubdomains(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.views(subs))
 }
 
+// handleShared lists the subdomains others invited the user to, and that
+// let them in now.
+func (s *Server) handleShared(w http.ResponseWriter, r *http.Request) {
+	list, err := s.manage.SharedWith(r.Context(), currentAuth(r).User)
+	if err != nil {
+		s.internalError(w, "list shared subdomains", err)
+		return
+	}
+	out := make([]api.Shared, len(list))
+	for i, in := range list {
+		out[i] = api.NewShared(s.cfg, in, s.manage.Tunnel(in.Subdomain) != nil)
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (s *Server) handleCreateSubdomain(w http.ResponseWriter, r *http.Request) {
 	a := currentAuth(r)
 	var req struct {
