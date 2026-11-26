@@ -85,10 +85,10 @@
             <a class="name-cell" :href="'/subdomains/' + encodeURIComponent(sub.name)">
               <span class="host"><strong>{{ sub.name }}</strong><span class="muted">.{{ app.domain }}</span></span>
             </a>
-            <div class="row-badges hide-wide"><StatusBadge :tunnel="sub.tunnel" /><AccessBadge :access="sub.access" /></div>
+            <div class="row-badges hide-wide"><StatusBadge :tunnel="sub.tunnel" /><AccessBadge :access="sub.access" :guests="sub.guests" /></div>
           </td>
           <td class="hide-narrow"><StatusBadge :tunnel="sub.tunnel" /><span :if="sub.tunnel" class="muted small">{{ ago(sub.tunnel.created_at) }}</span></td>
-          <td class="hide-narrow"><AccessBadge :access="sub.access" /></td>
+          <td class="hide-narrow"><AccessBadge :access="sub.access" :guests="sub.guests" /></td>
           <td class="hide-narrow">{{ sub.keys }}</td>
           <td class="right row-actions">
             <Button variant="ghost" square icon="external" title="Open" :label="'Open ' + sub.url" :href="sub.url" target="_blank" />
