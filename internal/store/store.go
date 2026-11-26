@@ -166,6 +166,10 @@ var migrations = []string{
 	);
 	CREATE INDEX subdomain_guests_user ON subdomain_guests(user_id);
 	ALTER TABLE users ADD COLUMN can_invite INTEGER NOT NULL DEFAULT 0;`,
+	// The browser and system a passkey was added from, and last used from,
+	// to tell passkeys apart: "Chrome on macOS".
+	`ALTER TABLE passkeys ADD COLUMN added_from TEXT NOT NULL DEFAULT '';
+	ALTER TABLE passkeys ADD COLUMN used_from TEXT NOT NULL DEFAULT '';`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {

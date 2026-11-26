@@ -164,6 +164,19 @@
     load()
   }
 
+  // Where a passkey lives, from what it says about itself: what keeps it,
+  // when known, and whether it syncs to that provider's other devices.
+  const KINDS = {
+    synced: { icon: "cloud", label: "Synced passkey", note: "synced" },
+    "security-key": { icon: "key", label: "Security key", note: "security key" },
+    device: { icon: "passkey", label: "On one device", note: "on one device" },
+  }
+  const kindOf = passkey => KINDS[passkey.kind] || KINDS.device
+  // Its provider unless its name says it already.
+  const keeper = passkey => passkey.provider && passkey.provider !== passkey.name
+    ? `${passkey.provider} · ${kindOf(passkey).note}`
+    : kindOf(passkey).label
+
   const removePasskey = async passkey => {
     if (!confirm(`Remove the passkey "${passkey.name}"?`)) return
     try {
@@ -294,10 +307,16 @@
               <Button type="submit" size="sm">Save</Button>
               <button type="button" class="link" @click="renaming = 0">Cancel</button>
             </form>
-            <span :else>{{ passkey.name }}</span>
+            <div :else class="passkey-name">
+              <span class="passkey-icon"><Icon :name="kindOf(passkey).icon" /></span>
+              <div>
+                {{ passkey.name }}
+                <div class="muted small">{{ keeper(passkey) }}</div>
+              </div>
+            </div>
           </td>
-          <td class="hide-narrow">{{ ago(passkey.created_at) }}</td>
-          <td>{{ ago(passkey.last_used_at) }}</td>
+          <td class="hide-narrow">{{ ago(passkey.created_at) }}<div :if="passkey.added_from" class="muted small">{{ passkey.added_from }}</div></td>
+          <td>{{ ago(passkey.last_used_at) }}<div :if="passkey.used_from" class="muted small">{{ passkey.used_from }}</div></td>
           <td class="right row-actions">
             <Button variant="ghost" square icon="pencil" title="Rename" :label="'Rename ' + passkey.name" @click="startRename(passkey)" />
             <Button variant="ghost-danger" square icon="trash" title="Remove" :label="'Remove ' + passkey.name" @click="removePasskey(passkey)" />
@@ -317,7 +336,7 @@
   <form id="add-passkey" class="form" @submit.prevent="addPasskey">
     <p class="muted">Your browser or password manager creates it, with your fingerprint, face or device PIN.</p>
     <Alert :if="error" tone="bad" flush>{{ error }}</Alert>
-    <label>Name <span class="hint">Optional. Where it lives, e.g. MacBook or 1Password.</span>
+    <label>Name <span class="hint">Optional. Without one, it is named after its password manager, or this browser.</span>
       <input name="passkey-name" maxlength="64" autocomplete="off" :value="passkeyName" @input="passkeyName = $event.target.value">
     </label>
   </form>

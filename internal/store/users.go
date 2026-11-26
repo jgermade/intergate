@@ -347,14 +347,19 @@ type Passkey struct {
 	Credential   []byte
 	CreatedAt    time.Time
 	LastUsedAt   time.Time
+	// AddedFrom and UsedFrom are the browser and system it was added from,
+	// and last used from: "Chrome on macOS", or "" when unknown.
+	AddedFrom string
+	UsedFrom  string
 }
 
-// AddPasskey stores a new credential for a user.
-func (s *Store) AddPasskey(ctx context.Context, userID int64, name string, credentialID, credential []byte) (*Passkey, error) {
-	p := &Passkey{UserID: userID, CredentialID: credentialID, Name: name, Credential: credential, CreatedAt: s.now().Truncate(time.Second)}
+// AddPasskey stores a new credential for a user, added from the browser
+// and system addedFrom.
+func (s *Store) AddPasskey(ctx context.Context, userID int64, name string, credentialID, credential []byte, addedFrom string) (*Passkey, error) {
+	p := &Passkey{UserID: userID, CredentialID: credentialID, Name: name, Credential: credential, CreatedAt: s.now().Truncate(time.Second), AddedFrom: addedFrom}
 	err := s.db.QueryRowContext(ctx, `
-		INSERT INTO passkeys (user_id, credential_id, name, credential, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id`,
-		userID, credentialID, name, credential, unix(p.CreatedAt)).Scan(&p.ID)
+		INSERT INTO passkeys (user_id, credential_id, name, credential, created_at, added_from) VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+		userID, credentialID, name, credential, unix(p.CreatedAt), addedFrom).Scan(&p.ID)
 	if isUniqueViolation(err) {
 		return nil, ErrConflict
 	}
@@ -367,7 +372,7 @@ func (s *Store) AddPasskey(ctx context.Context, userID int64, name string, crede
 // PasskeysByUser lists a user's passkeys, oldest first.
 func (s *Store) PasskeysByUser(ctx context.Context, userID int64) ([]*Passkey, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, user_id, credential_id, name, credential, created_at, last_used_at
+		SELECT id, user_id, credential_id, name, credential, created_at, last_used_at, added_from, used_from
 		FROM passkeys WHERE user_id = ? ORDER BY created_at, id`, userID)
 	if err != nil {
 		return nil, err
@@ -377,7 +382,7 @@ func (s *Store) PasskeysByUser(ctx context.Context, userID int64) ([]*Passkey, e
 	for rows.Next() {
 		var p Passkey
 		var created, used int64
-		if err := rows.Scan(&p.ID, &p.UserID, &p.CredentialID, &p.Name, &p.Credential, &created, &used); err != nil {
+		if err := rows.Scan(&p.ID, &p.UserID, &p.CredentialID, &p.Name, &p.Credential, &created, &used, &p.AddedFrom, &p.UsedFrom); err != nil {
 			return nil, err
 		}
 		p.CreatedAt, p.LastUsedAt = fromUnix(created), fromUnix(used)
@@ -387,10 +392,11 @@ func (s *Store) PasskeysByUser(ctx context.Context, userID int64) ([]*Passkey, e
 }
 
 // UpdatePasskeyUse stores the credential record after a successful
-// sign-in (it carries the authenticator's signature counter).
-func (s *Store) UpdatePasskeyUse(ctx context.Context, credentialID, credential []byte) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE passkeys SET credential = ?, last_used_at = ? WHERE credential_id = ?`,
-		credential, unix(s.now()), credentialID)
+// sign-in (it carries the authenticator's signature counter), from the
+// browser and system usedFrom.
+func (s *Store) UpdatePasskeyUse(ctx context.Context, credentialID, credential []byte, usedFrom string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE passkeys SET credential = ?, last_used_at = ?, used_from = ? WHERE credential_id = ?`,
+		credential, unix(s.now()), usedFrom, credentialID)
 	return err
 }
 
