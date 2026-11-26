@@ -254,7 +254,7 @@ func (s *Server) routes() http.Handler {
 	})
 	mux.HandleFunc("GET /auth/{provider}/login", s.handleOAuthLogin)
 	mux.HandleFunc("GET /auth/{provider}/callback", s.handleOAuthCallback)
-	mux.HandleFunc("GET /tunnel-auth", s.handleTunnelAuth)
+	mux.HandleFunc("GET "+tunnelAuthPath, s.handleTunnelAuth)
 
 	// The API the app calls.
 	mux.HandleFunc("GET /api/", func(w http.ResponseWriter, r *http.Request) {
