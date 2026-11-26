@@ -405,7 +405,10 @@
   <Tabs label="Admin" :model="tab" :items="tabs" @change="tabChanged($event.detail)" />
 </div>
 
-<div :if="tab === 'users'" role="tabpanel" aria-label="Users"><Card>
+<div :if="tab === 'users'" role="tabpanel" aria-label="Users"><Card title="Users">
+  <template :slot.aside>
+    <Button variant="secondary" size="sm" icon="plus" @click="startAddUser">Add user</Button>
+  </template>
   <div class="table-wrap">
     <table class="table tiles">
       <thead><tr><th>User</th><th>Role</th><th class="hide-narrow">Sign-in</th><th class="hide-narrow">Subdomains</th><th :if="app.tcp" class="hide-narrow">Ports</th><th class="hide-narrow">Last sign-in</th><th class="center">Enabled</th><th></th></tr></thead>
@@ -453,7 +456,6 @@
     </table>
   </div>
 </Card>
-  <div class="card-actions"><Button variant="secondary" icon="plus" @click="startAddUser">Add user</Button></div>
   <Modal :open="addingUser" size="md" title="Add a user" @close="addingUser = false">
     <form id="add-user" class="form" @submit.prevent="addUser">
       <Alert :if="error" tone="bad" flush>{{ error }}</Alert>
@@ -482,7 +484,7 @@
         <tr :each="sub in subdomains" :key="sub.name">
           <td><a class="name-cell" :href="'/subdomains/' + encodeURIComponent(sub.name)"><strong>{{ sub.name }}</strong></a></td>
           <td class="hide-narrow">{{ sub.owner }}</td>
-          <td><AccessBadge :access="sub.access" /></td>
+          <td><AccessBadge :access="sub.access" :guests="sub.guests" /></td>
           <td class="hide-narrow">{{ sub.keys }}</td>
           <td :if="app.tcp" class="hide-narrow">{{ sub.ports || "—" }}<span :if="sub.ports_online" class="muted small"> · {{ sub.ports_online }} online</span></td>
           <td class="hide-narrow">{{ sub.tunnel ? sub.tunnel.requests : "—" }}</td>

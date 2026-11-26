@@ -1,9 +1,23 @@
-<script :setup="{ access = 'public' }">
-  // Who can open a subdomain, as a badge in its colour.
+<script :setup="{ access = 'public', guests = 0 }">
+  // Who can open a subdomain, as a badge in its colour. A private one shared
+  // with others says with how many: `private +3`, then the `user` icon.
   //
-  //   <AccessBadge :access="sub.access" />
-  const Badge = await import("@theme/components/badge.html")
+  //   <AccessBadge :access="sub.access" :guests="sub.guests" />
+  const [Badge, Icon] = await C79.importAll([
+    "@theme/components/badge.html",
+    "@theme/components/icon.html",
+  ])
   const TONES = { public: "accent", users: "warn", private: "bad" }
+  $: shared = access === "private" && guests > 0
+  $: title = shared ? `Shared with ${guests} ${guests === 1 ? "person" : "people"}` : ""
 </script>
 
-<Badge :tone="TONES[access] || 'neutral'">{{ access }}</Badge>
+<Badge :tone="TONES[access] || 'neutral'" :title="title">{{ access }}<span :if="shared" class="guests">+{{ guests }}<Icon name="user" size="xs" weight="bold" /></span></Badge>
+
+<style scoped>
+  .guests {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+  }
+</style>

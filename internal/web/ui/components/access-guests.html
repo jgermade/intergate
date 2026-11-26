@@ -105,14 +105,14 @@
       <thead><tr><th>User</th><th class="hide-narrow">Invited</th><th></th></tr></thead>
       <tbody>
         <tr :each="guest in sub.guest_list" :key="guest.id">
-          <td class="guest-user">
+          <td><div class="guest-user">
             <img :if="guest.avatar_url" class="avatar" :src="guest.avatar_url" alt="">
             <span :else class="avatar" aria-hidden="true">{{ (guest.name || guest.email)[0] }}</span>
             <span class="guest-text">
               <span class="guest-name">{{ guest.name || guest.email }}</span>
               <span :if="guest.name" class="muted small guest-email">{{ guest.email }}</span>
             </span>
-          </td>
+          </div></td>
           <td class="hide-narrow">{{ ago(guest.created_at) }}</td>
           <td class="right row-actions">
             <Button variant="ghost-danger" square icon="trash" title="Remove" :label="'Remove ' + guest.email" @click="remove(guest)" />
@@ -127,6 +127,7 @@
     <Select name="guest" label="User to invite" :model="picked" :items="items" />
     <Button type="submit" variant="secondary" icon="plus" :disabled="busy">Invite</Button>
   </form>
-  <p :elseif="sub.can_invite && !full" class="hint">Every other user who may sign in can open it already. Once someone has an account here, they can be invited.</p>
+  <p :elseif="sub.can_invite && !full && sub.guest_list.length" class="hint">There is nobody else to invite: everyone else with an account here is invited already. Once someone new signs up, they can be invited.</p>
+  <p :elseif="sub.can_invite && !full" class="hint">There is nobody to invite yet: no one else has an account here. Once someone signs up, they can be invited.</p>
   <p :elseif="sub.can_invite" class="hint">A subdomain can be shared with at most {{ sub.guests_limit }} people: remove one to invite another.</p>
 </section>
