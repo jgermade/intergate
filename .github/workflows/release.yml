@@ -184,7 +184,19 @@ jobs:
           chart="dist/intergate-${{ needs.version.outputs.version }}.tgz"
           echo "$TOKEN" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
           helm package deploy/helm/intergate -d dist
-          helm push "$chart" oci://ghcr.io/${{ github.repository_owner }}/charts 2>&1 | tee push.log
+          # GHCR now and then answers "not found" when tagging a manifest it
+          # has just received (v0.0.33): push again, a little later each time.
+          # The same chart pushes to the same digest.
+          for attempt in 1 2 3 4; do
+            if helm push "$chart" oci://ghcr.io/${{ github.repository_owner }}/charts 2>&1 | tee push.log; then
+              break
+            fi
+            if [ "$attempt" = 4 ]; then
+              exit 1
+            fi
+            echo "helm push failed (attempt $attempt of 4); again in $((attempt * 15)) s"
+            sleep $((attempt * 15))
+          done
           digest=$(sed -n 's/^Digest: //p' push.log)
           test -n "$digest"
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
