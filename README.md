@@ -29,8 +29,8 @@ ssh -p 2222 -R myapp:80:localhost:3000 gate.example.com
   (the owner, and other users they invite, if an administrator lets them:
   **Admin → Users →** a user's options; invited users find them in their
   dashboard, under *Shared with you*). Protected tunnels send visitors to
-  sign in and work with any app behind them; the app never sees
-  intergate's cookies.
+  sign in, then straight back to the page they asked for, and work with
+  any app behind them; the app never sees intergate's cookies.
 - **Live view** of every tunnel: client address, key, requests and traffic,
   with a disconnect button. Removing a key or disabling a user closes their
   tunnels at once. The SSH session prints every request, like sish.

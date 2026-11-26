@@ -82,9 +82,11 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, user *stor
 }
 
 // afterLogin is where a new session goes: straight to rd, or first to the
-// account page to suggest a passkey when the user has none.
+// account page to suggest a passkey when the user has none. Not on the way
+// to a tunnel: whoever signs in to open foo.gate.example.com/page lands on
+// that page, and is offered a passkey on the dashboard another time.
 func (s *Server) afterLogin(r *http.Request, user *store.User, rd string) string {
-	if s.webauthn == nil {
+	if s.webauthn == nil || toTunnel(rd) {
 		return rd
 	}
 	keys, err := s.store.PasskeysByUser(r.Context(), user.ID)
@@ -424,4 +426,11 @@ func (o *oidcProvider) Identify(ctx context.Context, code, nonce, verifier strin
 		Username:  claims.PreferredUsername,
 		AvatarURL: claims.Picture,
 	}, nil
+}
+
+// toTunnel reports whether rd, a local path, is the hand-off to a tunnel
+// that sent its visitor to sign in.
+func toTunnel(rd string) bool {
+	u, err := url.Parse(rd)
+	return err == nil && u.Path == tunnelAuthPath
 }

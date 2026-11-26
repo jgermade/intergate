@@ -19,6 +19,10 @@ import (
 // from the dashboard and turns it into an access cookie for that host.
 const authPath = "/__intergate/auth"
 
+// tunnelAuthPath is the dashboard's page that sends a signed-in visitor
+// back to a protected tunnel; one who isn't signs in on the way.
+const tunnelAuthPath = "/tunnel-auth"
+
 const (
 	handoffTTL   = 2 * time.Minute
 	maxAccessTTL = 12 * time.Hour
@@ -126,7 +130,7 @@ func (s *Server) serveTunnel(w http.ResponseWriter, r *http.Request, name string
 				return
 			}
 			rd := s.cfg.TunnelURL(name) + r.URL.RequestURI()
-			http.Redirect(w, r, s.cfg.DashboardURL("/tunnel-auth?rd="+url.QueryEscape(rd)), http.StatusFound)
+			http.Redirect(w, r, s.cfg.DashboardURL(tunnelAuthPath+"?rd="+url.QueryEscape(rd)), http.StatusFound)
 			return
 		}
 		if !s.mayOpen(r.Context(), t, access, user) {
